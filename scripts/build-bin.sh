@@ -1,3 +1,6 @@
 #!/bin/bash
+set -euo pipefail
 
-CGO_ENABLED=0 go build -ldflags "-extldflags -static -s" -o ./bin/steve
+echo "Building binaries with GOARCH=$(go env GOARCH)"
+CGO_ENABLED=0 go build -gcflags="all=-N -l" -o ./bin/steve
+CGO_ENABLED=0 go build -gcflags="all=-N -l" -o ./bin/proxylimiter ./exp/cmd/proxylimiter
