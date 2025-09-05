@@ -1,5 +1,19 @@
+IMAGE ?= rancher/steve:dev
+PLATFORM ?= linux/$(shell go env GOARCH)
+
 build:
-	docker build -t steve .
+	docker build -t $(IMAGE) .
+
+import:
+	k3d image import -c st-upstream $(IMAGE)
+
+push:
+	docker tag $(IMAGE) aruiz14/experiments:steve-tracing
+	docker push aruiz14/experiments:steve-tracing
+
+debug:
+	env GOOS=linux make build-bin
+	docker build -t $(IMAGE) --platform $(PLATFORM) -f Dockerfile.local .
 
 build-bin:
 	bash scripts/build-bin.sh

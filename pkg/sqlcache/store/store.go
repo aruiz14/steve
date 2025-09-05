@@ -15,8 +15,15 @@ import (
 	"github.com/rancher/steve/pkg/sqlcache/db/transaction"
 	"github.com/rancher/steve/pkg/sqlcache/sqltypes"
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/util/tracing/tracing"
 
 	// needed for drivers
 	_ "modernc.org/sqlite"
@@ -289,19 +296,24 @@ func (s *Store) overrideCheck(finalFieldName, sourceGVK, sourceKey, finalTargetV
 /* Core methods */
 
 // deleteByKey deletes the object associated with key, if it exists in this Store
-func (s *Store) deleteByKey(key string, obj any) error {
-	return s.WithTransaction(s.ctx, true, func(tx transaction.Client) error {
-		_, err := tx.Stmt(s.deleteStmt).Exec(key)
-		if err != nil {
+func (s *Store) deleteByKey(ctx context.Context, key string, obj any) error {
+	tracer, ok := tracing.TracerFromContext(ctx)
+	if !ok {
+		tracer = noop.NewTracerProvider().Tracer("")
+	}
+	span := trace.SpanFromContext(ctx)
+	return s.WithTransaction(ctx, true, func(tx transaction.Client) error {
+		span.AddEvent("Transaction started")
+		defer span.AddEvent("Transaction ended")
+		_, span = tracer.Start(ctx, "deleteStmt.Exec")
+		if _, err := tx.Stmt(s.deleteStmt).Exec(key); err != nil {
 			return &db.QueryError{QueryString: s.deleteQuery, Err: err}
 		}
+		span.End()
 
-		err = s.runAfterDelete(key, obj, tx)
-		if err != nil {
-			return err
-		}
-
-		return nil
+		_, span = tracer.Start(ctx, "store.runAfterDelete")
+		defer span.End()
+		return s.runAfterDelete(key, obj, tx)
 	})
 }
 
@@ -333,20 +345,40 @@ func (s *Store) Add(obj any) error {
 	if err != nil {
 		return err
 	}
+	objMeta, err := meta.Accessor(obj)
+	if err != nil {
+		return err
+	}
 
-	err = s.WithTransaction(s.ctx, true, func(tx transaction.Client) error {
+	tracer := noop.NewTracerProvider().Tracer("")
+	if s.gvk.Kind == "ConfigMap" {
+		tracer = otel.Tracer("", trace.WithInstrumentationAttributes(
+			attribute.String("event.type", string(watch.Added)),
+			attribute.String("object.resourceVersion", objMeta.GetResourceVersion()),
+			attribute.String("object.key", objMeta.GetNamespace()+"/"+objMeta.GetName()),
+		))
+	}
+
+	ctx := tracing.RootContextForStore(s.ctx, objMeta.GetResourceVersion())
+	ctx, span := tracer.Start(tracing.WithTracer(ctx, tracer), "store.Add")
+	span.AddEvent("Starting transaction")
+	defer span.End()
+
+	err = s.WithTransaction(ctx, true, func(tx transaction.Client) error {
+		span.AddEvent("Transaction started")
+
+		_, span := tracer.Start(ctx, "store.Upsert")
 		err := s.Upsert(tx, s.upsertStmt, key, obj, s.shouldEncrypt)
 		if err != nil {
 			return &db.QueryError{QueryString: s.upsertQuery, Err: err}
 		}
+		span.End()
 
-		err = s.runAfterAdd(key, obj, tx)
-		if err != nil {
-			return err
-		}
-
-		return nil
+		_, span = tracer.Start(ctx, "store.runAfterAdd")
+		defer span.End()
+		return s.runAfterAdd(key, obj, tx)
 	})
+	span.AddEvent("Transaction ended")
 	if err != nil {
 		log.Errorf("Error in Store.Add for type %v: %v", s.name, err)
 		return err
@@ -362,19 +394,40 @@ func (s *Store) Update(obj any) error {
 		return err
 	}
 
-	err = s.WithTransaction(s.ctx, true, func(tx transaction.Client) error {
+	objMeta, err := meta.Accessor(obj)
+	if err != nil {
+		return err
+	}
+
+	tracer := noop.NewTracerProvider().Tracer("")
+	if s.gvk.Kind == "ConfigMap" {
+		tracer = otel.Tracer("", trace.WithInstrumentationAttributes(
+			attribute.String("event.type", string(watch.Modified)),
+			attribute.String("object.resourceVersion", objMeta.GetResourceVersion()),
+			attribute.String("object.key", objMeta.GetNamespace()+"/"+objMeta.GetName()),
+		))
+	}
+
+	ctx := tracing.RootContextForStore(s.ctx, objMeta.GetResourceVersion())
+	ctx, span := tracer.Start(tracing.WithTracer(ctx, tracer), "store.Update")
+	span.AddEvent("Starting transaction")
+	defer span.End()
+
+	err = s.WithTransaction(ctx, true, func(tx transaction.Client) error {
+		span.AddEvent("Transaction started")
+
+		_, span := tracer.Start(ctx, "store.Upsert")
 		err := s.Upsert(tx, s.upsertStmt, key, obj, s.shouldEncrypt)
 		if err != nil {
 			return &db.QueryError{QueryString: s.upsertQuery, Err: err}
 		}
+		span.End()
 
-		err = s.runAfterUpdate(key, obj, tx)
-		if err != nil {
-			return err
-		}
-
-		return nil
+		_, span = tracer.Start(ctx, "store.runAfterUpdate")
+		defer span.End()
+		return s.runAfterUpdate(key, obj, tx)
 	})
+	span.AddEvent("Transaction ended")
 	if err != nil {
 		log.Errorf("Error in Store.Update for type %v: %v", s.name, err)
 		return err
@@ -389,7 +442,27 @@ func (s *Store) Delete(obj any) error {
 	if err != nil {
 		return err
 	}
-	err = s.deleteByKey(key, obj)
+
+	objMeta, err := meta.Accessor(obj)
+	if err != nil {
+		return err
+	}
+
+	tracer := noop.NewTracerProvider().Tracer("")
+	if s.gvk.Kind == "ConfigMap" {
+		tracer = otel.Tracer("", trace.WithInstrumentationAttributes(
+			attribute.String("event.type", string(watch.Deleted)),
+			attribute.String("object.resourceVersion", objMeta.GetResourceVersion()),
+			attribute.String("object.key", objMeta.GetNamespace()+"/"+objMeta.GetName()),
+		))
+	}
+
+	ctx := tracing.RootContextForStore(s.ctx, objMeta.GetResourceVersion())
+	ctx, span := tracer.Start(tracing.WithTracer(ctx, tracer), "store.Delete")
+	span.AddEvent("Starting transaction")
+	defer span.End()
+
+	err = s.deleteByKey(ctx, key, obj)
 	if err != nil {
 		log.Errorf("Error in Store.Delete for type %v: %v", s.name, err)
 		return err

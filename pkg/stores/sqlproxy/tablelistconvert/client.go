@@ -8,10 +8,12 @@ import (
 	"context"
 
 	"github.com/rancher/wrangler/v3/pkg/data"
+	"go.opentelemetry.io/otel"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	k8sWatch "k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/util/tracing/tracing"
 )
 
 type Client struct {
@@ -59,10 +61,23 @@ func (w *tableConvertWatch) feed() {
 					close(w.events)
 					return
 				}
-				if unstr, ok := e.Object.(*unstructured.Unstructured); ok {
+				obj := e.Object
+				tobj, ok := obj.(*tracing.RuntimeObjectTraced)
+				if ok {
+					obj = tobj.Object
+				}
+				unstr, ok := obj.(*unstructured.Unstructured)
+				if !ok {
+					continue
+				}
+				func() {
+					if tobj != nil {
+						_, span := otel.Tracer("").Start(tobj.Context, "tableConvertWatch")
+						defer span.End()
+					}
 					rowToObject(unstr)
 					w.events <- e
-				}
+				}()
 			case <-w.done:
 				close(w.events)
 				return

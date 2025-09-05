@@ -22,6 +22,8 @@ import (
 
 	"github.com/rancher/steve/pkg/sqlcache/db/transaction"
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel/trace/noop"
+	"k8s.io/client-go/util/tracing/tracing"
 
 	// needed for drivers
 	_ "modernc.org/sqlite"
@@ -73,8 +75,15 @@ func (c *client) WithTransaction(ctx context.Context, forWriting bool, f WithTra
 }
 
 func (c *client) withTransaction(ctx context.Context, forWriting bool, f WithTransactionFunction) error {
+	tracer, ok := tracing.TracerFromContext(ctx)
+	if !ok {
+		tracer = noop.NewTracerProvider().Tracer("")
+	}
+	_, span := tracer.Start(ctx, "db.client.withTransaction")
+	defer span.End()
+
 	c.connLock.RLock()
-	// note: this assumes _txlock=immediate in the connection string, see NewConnection
+	span.AddEvent("Lock acquired!")
 	tx, err := c.conn.BeginTx(ctx, &sql.TxOptions{
 		ReadOnly: !forWriting,
 	})
@@ -443,7 +452,7 @@ func (c *client) NewConnection(useTempDir bool) (string, error) {
 		dbPath = InformerObjectCacheDBPath
 	}
 	if err := touchFile(dbPath, informerObjectCachePerms); err != nil {
-		return dbPath, nil
+		return dbPath, err
 	}
 
 	sqlDB, err := sql.Open("sqlite", "file:"+dbPath+"?"+

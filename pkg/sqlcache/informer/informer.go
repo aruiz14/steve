@@ -54,10 +54,62 @@ type ByOptionsLister interface {
 // this is set to a var so that it can be overridden by test code for mocking purposes
 var newInformer = cache.NewSharedIndexInformer
 
+type watchWrapper struct {
+	watch.Interface
+	c           <-chan watch.Event
+	started     sync.Once
+	startedChan chan struct{}
+}
+
+func (w *watchWrapper) ResultChan() <-chan watch.Event {
+	w.started.Do(func() {
+		close(w.startedChan)
+	})
+	return w.c
+}
+
+func newWatchWrapper(w watch.Interface) watch.Interface {
+	started := make(chan struct{})
+	c := make(chan watch.Event)
+	go func() {
+		defer close(c)
+		<-started
+		for e := range w.ResultChan() {
+			func() {
+				switch e.Type {
+				case watch.Added, watch.Modified, watch.Deleted:
+					obj := e.Object.(*unstructured.Unstructured)
+					ctx := tracing.RootContextForWatcher(context.Background(), obj.GetResourceVersion())
+					ctx, rootSpan := otel.Tracer("").Start(ctx, "configmap-watcher-event",
+						trace.WithSpanKind(trace.SpanKindConsumer),
+						trace.WithAttributes(
+							attribute.String("event.type", string(e.Type)),
+							attribute.String("object.resourceVersion", obj.GetResourceVersion()),
+							attribute.String("object.key", obj.GetNamespace()+"/"+obj.GetName()),
+						),
+					)
+					_, span := otel.Tracer("").Start(ctx, "sqlcache.informer.watchWrapper")
+					span.AddEvent("Event received!")
+					span.End()
+					rootSpan.End()
+				}
+				c <- e
+			}()
+		}
+	}()
+	return &watchWrapper{
+		Interface:   w,
+		c:           c,
+		startedChan: started,
+	}
+}
+
 // NewInformer returns a new SQLite-backed Informer for the type specified by schema in unstructured.Unstructured form
 // using the specified client
 func NewInformer(ctx context.Context, client dynamic.ResourceInterface, fields [][]string, externalUpdateInfo *sqltypes.ExternalGVKUpdates, selfUpdateInfo *sqltypes.ExternalGVKUpdates, transform cache.TransformFunc, gvk schema.GroupVersionKind, db db.Client, shouldEncrypt bool, namespaced bool, watchable bool, gcInterval time.Duration, gcKeepCount int) (*Informer, error) {
+	shouldTrace := gvk.Kind == "ConfigMap"
 	watchFunc := func(options metav1.ListOptions) (watch.Interface, error) {
+		ctx := context.WithValue(ctx, "shouldTrace", shouldTrace)
 		return client.Watch(ctx, options)
 	}
 	if !watchable {
