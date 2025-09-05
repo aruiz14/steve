@@ -1,18 +1,34 @@
 package client
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/rancher/apiserver/pkg/types"
 	"github.com/rancher/steve/pkg/attributes"
+	"github.com/rancher/wrangler/v3/pkg/data"
+	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/metadata"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/util/tracing/tracing"
 )
 
 const (
@@ -224,7 +240,14 @@ func newDynamicClient(ctx *types.APIRequest, cfg *rest.Config, impersonate bool,
 	if err != nil {
 		return nil, err
 	}
-
+	if false {
+		cfg.Wrap(func(rt http.RoundTripper) http.RoundTripper {
+			if _, ok := rt.(*watchInterceptorRoundTripper); ok {
+				return rt
+			}
+			return &watchInterceptorRoundTripper{next: rt}
+		})
+	}
 	return dynamic.NewForConfig(cfg)
 }
 
@@ -236,4 +259,228 @@ func newClient(ctx *types.APIRequest, cfg *rest.Config, s *types.APISchema, name
 
 	gvr := attributes.GVR(s)
 	return client.Resource(gvr).Namespace(namespace), nil
+}
+
+type watchInterceptorRoundTripper struct {
+	next http.RoundTripper
+}
+
+func (w watchInterceptorRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+	if r.URL.Path != "/api/v1/namespaces/default/configmaps" &&
+		r.URL.Path != "/api/v1/namespaces/watch-tests/configmaps" &&
+		r.URL.Path != "/api/v1/configmaps" {
+		return w.next.RoundTrip(r)
+	}
+	if true || r.URL.Query().Get("watch") != "true" { //|| !strings.Contains(r.Header.Get("Accept"), "application/json;as=Table") {
+		return w.next.RoundTrip(r)
+	}
+
+	logrus.Infoln("----INTERCEPTING WATCH REQUEST!! at rest.Client", r.URL)
+	res, err := w.next.RoundTrip(r)
+	if err != nil {
+		return res, err
+	}
+	logrus.Infoln("----INTERCEPTED WATCH REQUEST!! at rest.Client", r.URL)
+	res.Body = interceptBody(res.Body)
+	return res, err
+}
+
+type bufferedBodyReader struct {
+	sync.Mutex
+	bytes.Buffer
+	readCount   uint64
+	writeCount  uint64
+	remaining   <-chan position
+	currentItem *position
+	cancel      context.CancelFunc
+}
+
+type position struct {
+	pos  uint64
+	span trace.Span
+}
+
+func newBufferedBodyReader(posChan <-chan position) (context.Context, *bufferedBodyReader) {
+	ctx, cancel := context.WithCancel(context.Background())
+	return ctx, &bufferedBodyReader{
+		remaining: posChan,
+		cancel:    cancel,
+	}
+}
+
+func (b *bufferedBodyReader) Read(p []byte) (n int, err error) {
+	if b.currentItem == nil {
+		v, ok := <-b.remaining
+		if !ok {
+			return 0, io.EOF
+		}
+		b.currentItem = &v
+	}
+
+	b.Lock()
+	defer b.Unlock()
+	n, err = b.Buffer.Read(p)
+	b.readCount += uint64(n)
+	if b.readCount >= b.currentItem.pos {
+		b.currentItem.span.End()
+		b.currentItem = nil
+		b.Buffer.Truncate(b.Buffer.Len())
+	}
+
+	return
+}
+
+func (b *bufferedBodyReader) Write(p []byte) (n int, err error) {
+	// Avoid locking to be done externally so writeCount can be immediately read afterwards
+	n, err = b.Buffer.Write(p)
+	b.writeCount += uint64(n)
+	return
+}
+
+func (b *bufferedBodyReader) Close() error {
+	log.Println("!!!!!!!BODY CLOSED!!")
+	b.cancel()
+	return nil
+}
+
+type watchEvent struct {
+	Type   watch.EventType            `json:"type"`
+	Object *unstructured.Unstructured `json:"object"`
+}
+
+func spanForEvent(event watchEvent) trace.Span {
+	if event.Type == watch.Bookmark {
+		_, span := noop.NewTracerProvider().Tracer("").Start(context.Background(), "bookmarkEvent")
+		return span
+	}
+	obj := event.Object
+	rv := obj.GetResourceVersion()
+	rowToObject(obj)
+	key := strings.TrimPrefix(obj.GetNamespace()+"/"+obj.GetName(), "/")
+
+	ctx := tracing.RootContextForWatcher(context.Background(), rv)
+	_, span := otel.Tracer("").Start(ctx, "rest-client-watch-intercept",
+		trace.WithAttributes(
+			attribute.String("event.type", string(event.Type)),
+			attribute.String("object.resourceVersion", rv),
+			attribute.String("object.key", key),
+		),
+		trace.WithSpanKind(trace.SpanKindConsumer),
+	)
+	return span
+}
+
+func interceptBody(body io.ReadCloser) io.ReadCloser {
+	if body == nil {
+		return nil
+	}
+
+	const maxBuffer = 1000
+
+	positions := make(chan position, maxBuffer)
+	ctx, buffer := newBufferedBodyReader(positions)
+	debugCtx, cancelDebug := context.WithCancel(ctx)
+	go func() {
+		t := time.NewTicker(5 * time.Second)
+		defer t.Stop()
+		for {
+			fmt.Println("=========== Buffer channel length:", len(positions), "/", cap(positions))
+			select {
+			case <-t.C:
+			case <-debugCtx.Done():
+				return
+			}
+		}
+	}()
+	go func() {
+		defer cancelDebug()
+		defer func() {
+			defer body.Close()
+			if _, err := io.Copy(io.Discard, body); err == io.EOF {
+				return
+			}
+		}()
+		defer close(positions)
+
+		dec := json.NewDecoder(body)
+		enc := json.NewEncoder(buffer)
+		for {
+			select {
+			case <-ctx.Done():
+				log.Printf("!!!!!!!Aborting decoder: %+v\n", ctx.Err())
+				return
+			default:
+			}
+			var event watchEvent
+			if err := dec.Decode(&event); err != nil {
+				if err != io.EOF {
+					log.Printf("!!!!!!!Error decoding event: %+v\n", err)
+				}
+				return
+			}
+			pos := position{
+				span: spanForEvent(event),
+			}
+			buffer.Lock()
+			if err := func() error {
+				defer buffer.Unlock()
+				if err := enc.Encode(event); err != nil {
+					return err
+				}
+				pos.pos = buffer.writeCount
+				return nil
+			}(); err != nil {
+				log.Printf("!!!!!!!Error re-encoding event: %+v\n", err)
+				return
+			}
+			select {
+			case positions <- pos:
+			default:
+				log.Println("!!!!!! Positions channel is full!, waiting...")
+				positions <- pos
+				log.Println("!!!!!! ...... Done!")
+			}
+		}
+	}()
+	return buffer
+}
+
+func rowToObject(obj *unstructured.Unstructured) {
+	if obj == nil {
+		return
+	}
+	if obj.Object["kind"] != "Table" ||
+		(obj.Object["apiVersion"] != "meta.k8s.io/v1" &&
+			obj.Object["apiVersion"] != "meta.k8s.io/v1beta1") {
+		return
+	}
+
+	items := tableToObjects(obj.Object)
+	if len(items) == 1 {
+		obj.Object = items[0].Object
+	}
+}
+
+func tableToObjects(obj map[string]interface{}) []unstructured.Unstructured {
+	var result []unstructured.Unstructured
+
+	rows, _ := obj["rows"].([]interface{})
+	for _, row := range rows {
+		m, ok := row.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		cells := m["cells"]
+		object, ok := m["object"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		data.PutValue(object, cells, "metadata", "fields")
+		result = append(result, unstructured.Unstructured{
+			Object: object,
+		})
+	}
+
+	return result
 }

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/rancher/steve/pkg/sqlcache/db"
@@ -16,6 +17,9 @@ import (
 	"github.com/rancher/steve/pkg/sqlcache/sqltypes"
 	sqlStore "github.com/rancher/steve/pkg/sqlcache/store"
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
@@ -24,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/util/tracing/tracing"
 )
 
 var defaultRefreshTime = 5 * time.Second
@@ -139,7 +144,13 @@ func NewInformer(ctx context.Context, client dynamic.ResourceInterface, fields [
 			})
 			return a, err
 		},
-		WatchFunc: watchFunc,
+		WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+			w, err := watchFunc(options)
+			//if err == nil && shouldTrace {
+			//	return newWatchWrapper(w), nil
+			//}
+			return w, err
+		},
 	}
 
 	example := &unstructured.Unstructured{}

@@ -854,17 +854,13 @@ func (s *Store) ListByPartitions(apiOp *types.APIRequest, apiSchema *types.APISc
 
 // WatchByPartitions returns a channel of events for a list or resource belonging to any of the specified partitions
 func (s *Store) WatchByPartitions(apiOp *types.APIRequest, schema *types.APISchema, wr types.WatchRequest, partitions []partition.Partition) (chan watch.Event, error) {
-	ctx, cancel := context.WithCancel(apiOp.Context())
+	eg, ctx := errgroup.WithContext(apiOp.Context())
 	apiOp = apiOp.Clone().WithContext(ctx)
 
-	eg := errgroup.Group{}
-
 	result := make(chan watch.Event)
-
 	for _, partition := range partitions {
 		p := partition
 		eg.Go(func() error {
-			defer cancel()
 			c, err := s.watchByPartition(p, apiOp, schema, wr)
 
 			if err != nil {
@@ -879,9 +875,9 @@ func (s *Store) WatchByPartitions(apiOp *types.APIRequest, schema *types.APISche
 
 	go func() {
 		defer close(result)
-		<-ctx.Done()
-		eg.Wait()
-		cancel()
+		if err := eg.Wait(); err != nil && !errors.Is(err, context.Canceled) {
+			logrus.Warnf("WatchByPartitions returned error: %v", err)
+		}
 	}()
 
 	return result, nil

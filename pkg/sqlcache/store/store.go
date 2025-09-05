@@ -389,6 +389,10 @@ func (s *Store) Add(obj any) error {
 
 // Update saves an obj, or updates it if it exists in this Store
 func (s *Store) Update(obj any) error {
+	//ctx, cancel := context.WithCancel(context.Background())
+	//defer cancel()
+	//defer runtimetrace.StartRegion(ctx, "Store.Update").End()
+	//
 	key, err := s.keyFunc(obj)
 	if err != nil {
 		return err

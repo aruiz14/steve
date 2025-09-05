@@ -10,9 +10,13 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -24,6 +28,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/util/tracing/tracing"
 
 	"github.com/rancher/apiserver/pkg/apierror"
 	"github.com/rancher/apiserver/pkg/types"
@@ -274,6 +279,73 @@ func returnErr(err error, c chan watch.Event) {
 	}
 }
 
+type watchWrapper struct {
+	watch.Interface
+	c           <-chan watch.Event
+	started     sync.Once
+	startedChan chan struct{}
+}
+
+func (w *watchWrapper) ResultChan() <-chan watch.Event {
+	w.started.Do(func() {
+		close(w.startedChan)
+	})
+	return w.c
+}
+
+func newWatchWrapper(w watch.Interface) watch.Interface {
+	started := make(chan struct{})
+	c := make(chan watch.Event)
+	go func() {
+		defer close(c)
+		<-started
+		for e := range w.ResultChan() {
+			func() {
+				switch e.Type {
+				case watch.Added, watch.Modified, watch.Deleted:
+					obj := e.Object.(*unstructured.Unstructured)
+					rv := obj.GetResourceVersion()
+					obj = objectFromTable(obj)
+					if obj.GetKind() == "ConfigMap" {
+						ctx := tracing.RootContextForWatcher(context.Background(), rv)
+						_, span := otel.Tracer("").Start(ctx, "configmap-watcher-event",
+							trace.WithSpanKind(trace.SpanKindConsumer),
+							trace.WithAttributes(
+								attribute.String("event.type", string(e.Type)),
+								attribute.String("object.resourceVersion", rv),
+								attribute.String("object.key", obj.GetNamespace()+"/"+obj.GetName()),
+							),
+						)
+						span.AddEvent("Event received!")
+						span.End()
+					}
+				}
+				c <- e
+			}()
+		}
+	}()
+	return &watchWrapper{
+		Interface:   w,
+		c:           c,
+		startedChan: started,
+	}
+}
+
+func objectFromTable(obj *unstructured.Unstructured) *unstructured.Unstructured {
+	if obj == nil ||
+		obj.Object["kind"] != "Table" ||
+		(obj.Object["apiVersion"] != "meta.k8s.io/v1" &&
+			obj.Object["apiVersion"] != "meta.k8s.io/v1beta1") {
+		return nil
+	}
+
+	items := tableToObjects(obj.Object)
+	if len(items) == 1 {
+		return &items[0]
+	}
+	return nil
+}
+
 func (s *Store) listAndWatch(apiOp *types.APIRequest, client dynamic.ResourceInterface, schema *types.APISchema, w types.WatchRequest, result chan watch.Event) {
 	rev := w.Revision
 	if rev == "-1" || rev == "0" {
@@ -300,6 +372,9 @@ func (s *Store) listAndWatch(apiOp *types.APIRequest, client dynamic.ResourceInt
 	if err != nil {
 		returnErr(errors.Wrapf(err, "stopping watch for %s: %v", schema.ID, err), result)
 		return
+	}
+	if apiOp.Type == "subscribe" {
+		watcher = newWatchWrapper(watcher)
 	}
 	defer watcher.Stop()
 	logrus.Debugf("opening watcher for %s", schema.ID)
