@@ -1,0 +1,31 @@
+# syntax = docker/dockerfile:experimental
+# FROM rancher/rancher:v2.12-dev as rancher
+
+FROM registry.suse.com/bci/bci-micro:15.7 as micro
+FROM registry.suse.com/bci/bci-base:latest AS builder
+
+COPY --from=micro / /chroot/
+RUN zypper --installroot /chroot -n --gpg-auto-import-keys in --no-recommends procps && \
+    zypper --installroot /chroot clean -a && \
+    rm -rf /chroot/var/log/
+
+FROM micro
+COPY --from=builder /chroot/ /
+
+ARG user=steve
+
+RUN echo "$user:x:1000:1000::/home/$user:/bin/bash" >> /etc/passwd && \
+    echo "$user:x:1000:" >> /etc/group && \
+    mkdir /home/$user && \
+    chown -R $user:$user /home/$user
+
+WORKDIR /home/$user
+
+COPY bin/steve /usr/bin/steve
+COPY bin/proxylimiter /usr/bin/proxylimiter
+# COPY --from=rancher /usr/bin/kubectl /usr/bin/kubectl
+
+# Hack to make golang do files,dns search order
+ENV LOCALDOMAIN=""
+USER $user
+ENTRYPOINT ["/usr/bin/steve"]
