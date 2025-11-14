@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -35,15 +34,17 @@ import (
 
 var emptyNamespaceList = &unstructured.UnstructuredList{Object: map[string]any{"items": []any{}}, Items: []unstructured.Unstructured{}}
 
-func makeListOptionIndexer(ctx context.Context, gvk schema.GroupVersionKind, opts ListOptionIndexerOptions, shouldEncrypt bool, nsList *unstructured.UnstructuredList) (*ListOptionIndexer, string, error) {
+func makeListOptionIndexer(t testing.TB, gvk schema.GroupVersionKind, opts ListOptionIndexerOptions, shouldEncrypt bool, nsList *unstructured.UnstructuredList) (*ListOptionIndexer, error) {
+	t.Helper()
+	ctx := t.Context()
 	m, err := encryption.NewManager()
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 
-	db, dbPath, err := db.NewClient(ctx, nil, m, m, true)
+	db, err := db.NewClient(ctx, m, m, db.WithDBDir(t.TempDir()))
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	// First create a namespace table so the projectsornamespaces query succeeds
 	nsGVK := schema.GroupVersionKind{
@@ -56,7 +57,7 @@ func makeListOptionIndexer(ctx context.Context, gvk schema.GroupVersionKind, opt
 	name := informerNameFromGVK(nsGVK)
 	s, err := store.NewStore(ctx, example, cache.DeletionHandlingMetaNamespaceKeyFunc, db, shouldEncrypt, nsGVK, name, nil, nil)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	ns_opts := ListOptionIndexerOptions{
 		Fields:       [][]string{},
@@ -64,13 +65,13 @@ func makeListOptionIndexer(ctx context.Context, gvk schema.GroupVersionKind, opt
 	}
 	listOptionIndexer, err := NewListOptionIndexer(ctx, s, ns_opts)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	if nsList != nil {
 		for _, item := range nsList.Items {
 			err = listOptionIndexer.Add(&item)
 			if err != nil {
-				return nil, "", err
+				return nil, err
 			}
 		}
 	}
@@ -81,7 +82,7 @@ func makeListOptionIndexer(ctx context.Context, gvk schema.GroupVersionKind, opt
 
 	s, err = store.NewStore(ctx, example, cache.DeletionHandlingMetaNamespaceKeyFunc, db, shouldEncrypt, gvk, name, nil, nil)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	if opts.IsNamespaced {
 		// Can't use slices.Compare because []string doesn't implement comparable
@@ -95,18 +96,12 @@ func makeListOptionIndexer(ctx context.Context, gvk schema.GroupVersionKind, opt
 
 	listOptionIndexer, err = NewListOptionIndexer(ctx, s, opts)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 
 	go listOptionIndexer.RunGC(ctx)
 
-	return listOptionIndexer, dbPath, nil
-}
-
-func cleanTempFiles(basePath string) {
-	os.Remove(basePath)
-	os.Remove(basePath + "-shm")
-	os.Remove(basePath + "-wal")
+	return listOptionIndexer, nil
 }
 
 func TestNewListOptionIndexer(t *testing.T) {
@@ -1320,8 +1315,7 @@ func TestNewListOptionIndexerEasy(t *testing.T) {
 			if test.description == "ListByOptions with a positive projectsornamespaces test should work" {
 				fmt.Println("Stop here")
 			}
-			loi, dbPath, err := makeListOptionIndexer(ctx, gvk, opts, false, namespaceList)
-			defer cleanTempFiles(dbPath)
+			loi, err := makeListOptionIndexer(t, gvk, opts, false, namespaceList)
 
 			for _, item := range itemList.Items {
 				err = loi.Add(&item)
@@ -1511,9 +1505,8 @@ func TestNewListOptionIndexerTypeGuidance(t *testing.T) {
 		})
 	for _, test := range tests {
 		t.Run(test.description, func(t *testing.T) {
-			loi, dbPath, err := makeListOptionIndexer(t.Context(), gvk, test.opts, false, namespaceList)
+			loi, err := makeListOptionIndexer(t, gvk, test.opts, false, namespaceList)
 			require.NoError(t, err)
-			defer cleanTempFiles(dbPath)
 
 			for _, item := range itemList.Items {
 				err = loi.Add(&item)
@@ -1791,9 +1784,8 @@ func TestSortPodsOnArrayAccess(t *testing.T) {
 				Fields:       fields,
 				IsNamespaced: true,
 			}
-			loi, dbPath, err := makeListOptionIndexer(ctx, podGVK, opts, false, namespaceList)
+			loi, err := makeListOptionIndexer(t, podGVK, opts, false, namespaceList)
 			require.NoError(t, err)
-			defer cleanTempFiles(dbPath)
 
 			for _, item := range itemList.Items {
 				err = loi.Add(&item)
@@ -1815,8 +1807,8 @@ func TestDropAll(t *testing.T) {
 	opts := ListOptionIndexerOptions{
 		IsNamespaced: true,
 	}
-	loi, dbPath, err := makeListOptionIndexer(ctx, gvk, opts, false, nil)
-	defer cleanTempFiles(dbPath)
+	loi, err := makeListOptionIndexer(t, gvk, opts, false, nil)
+
 	assert.NoError(t, err)
 
 	obj1 := &unstructured.Unstructured{
@@ -1911,8 +1903,8 @@ func BenchmarkNamespaceNameList(b *testing.B) {
 	opts := ListOptionIndexerOptions{
 		IsNamespaced: true,
 	}
-	loi, dbPath, err := makeListOptionIndexer(ctx, gvk, opts, false, emptyNamespaceList)
-	defer cleanTempFiles(dbPath)
+	loi, err := makeListOptionIndexer(b, gvk, opts, false, emptyNamespaceList)
+
 	assert.NoError(b, err)
 	for _, item := range itemList.Items {
 		err = loi.Add(&item)
@@ -2166,8 +2158,8 @@ func TestUserDefinedExtractFunction(t *testing.T) {
 				Fields:       fields,
 				IsNamespaced: true,
 			}
-			loi, dbPath, err := makeListOptionIndexer(ctx, gvk, opts, false, emptyNamespaceList)
-			defer cleanTempFiles(dbPath)
+			loi, err := makeListOptionIndexer(t, gvk, opts, false, emptyNamespaceList)
+
 			assert.NoError(t, err)
 
 			for _, item := range itemList.Items {
@@ -2284,8 +2276,8 @@ func TestUserDefinedInetToAnonFunction(t *testing.T) {
 				Fields:       fields,
 				IsNamespaced: true,
 			}
-			loi, dbPath, err := makeListOptionIndexer(ctx, gvk, opts, false, emptyNamespaceList)
-			defer cleanTempFiles(dbPath)
+			loi, err := makeListOptionIndexer(t, gvk, opts, false, emptyNamespaceList)
+
 			assert.NoError(t, err)
 
 			for _, item := range itemList.Items {
@@ -2525,8 +2517,8 @@ func TestUserDefinedMemoryFunction(t *testing.T) {
 				Fields:       fields,
 				IsNamespaced: true,
 			}
-			loi, dbPath, err := makeListOptionIndexer(ctx, gvk, opts, false, emptyNamespaceList)
-			defer cleanTempFiles(dbPath)
+			loi, err := makeListOptionIndexer(t, gvk, opts, false, emptyNamespaceList)
+
 			assert.NoError(t, err)
 
 			for _, item := range itemList.Items {
@@ -3766,8 +3758,8 @@ func TestWatchEncryption(t *testing.T) {
 		IsNamespaced: true,
 	}
 	// shouldEncrypt = true to ensure we can write + read from encrypted events
-	loi, dbPath, err := makeListOptionIndexer(ctx, gvk, opts, true, emptyNamespaceList)
-	defer cleanTempFiles(dbPath)
+	loi, err := makeListOptionIndexer(t, gvk, opts, true, emptyNamespaceList)
+
 	assert.NoError(t, err)
 
 	foo := &unstructured.Unstructured{
@@ -3854,8 +3846,8 @@ func TestWatchMany(t *testing.T) {
 		},
 		IsNamespaced: true,
 	}
-	loi, dbPath, err := makeListOptionIndexer(ctx, gvk, opts, false, emptyNamespaceList)
-	defer cleanTempFiles(dbPath)
+	loi, err := makeListOptionIndexer(t, gvk, opts, false, emptyNamespaceList)
+
 	assert.NoError(t, err)
 
 	startWatcher := func(ctx context.Context) (chan watch.Event, chan error) {
@@ -4115,8 +4107,8 @@ func TestWatchFilter(t *testing.T) {
 				Fields:       [][]string{{"metadata", "somefield"}},
 				IsNamespaced: true,
 			}
-			loi, dbPath, err := makeListOptionIndexer(ctx, gvk, opts, false, emptyNamespaceList)
-			defer cleanTempFiles(dbPath)
+			loi, err := makeListOptionIndexer(t, gvk, opts, false, emptyNamespaceList)
+
 			assert.NoError(t, err)
 
 			wCh, errCh := startWatcher(ctx, loi, WatchFilter{
@@ -4212,8 +4204,8 @@ func TestWatchResourceVersion(t *testing.T) {
 	opts := ListOptionIndexerOptions{
 		IsNamespaced: true,
 	}
-	loi, dbPath, err := makeListOptionIndexer(parentCtx, gvk, opts, false, emptyNamespaceList)
-	defer cleanTempFiles(dbPath)
+	loi, err := makeListOptionIndexer(t, gvk, opts, false, emptyNamespaceList)
+
 	assert.NoError(t, err)
 
 	getRV := func(t *testing.T) string {
@@ -4369,8 +4361,8 @@ func TestWatchGarbageCollection(t *testing.T) {
 		GCInterval:  40 * time.Millisecond,
 		GCKeepCount: 2,
 	}
-	loi, dbPath, err := makeListOptionIndexer(parentCtx, gvk, opts, false, emptyNamespaceList)
-	defer cleanTempFiles(dbPath)
+	loi, err := makeListOptionIndexer(t, gvk, opts, false, emptyNamespaceList)
+
 	assert.NoError(t, err)
 
 	getRV := func(t *testing.T) string {
@@ -4481,8 +4473,8 @@ func TestNonNumberResourceVersion(t *testing.T) {
 		Fields:       [][]string{{"metadata", "somefield"}},
 		IsNamespaced: true,
 	}
-	loi, dbPath, err := makeListOptionIndexer(ctx, gvk, opts, false, emptyNamespaceList)
-	defer cleanTempFiles(dbPath)
+	loi, err := makeListOptionIndexer(t, gvk, opts, false, emptyNamespaceList)
+
 	assert.NoError(t, err)
 
 	foo := &unstructured.Unstructured{
@@ -4551,8 +4543,8 @@ func TestWatchCancel(t *testing.T) {
 		Fields:       [][]string{{"metadata", "somefield"}},
 		IsNamespaced: true,
 	}
-	loi, dbPath, err := makeListOptionIndexer(ctx, gvk, opts, false, emptyNamespaceList)
-	defer cleanTempFiles(dbPath)
+	loi, err := makeListOptionIndexer(t, gvk, opts, false, emptyNamespaceList)
+
 	assert.NoError(t, err)
 
 	foo := &unstructured.Unstructured{

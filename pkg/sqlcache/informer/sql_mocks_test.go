@@ -55,6 +55,20 @@ func (mr *MockStoreMockRecorder) Add(obj any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Add", reflect.TypeOf((*MockStore)(nil).Add), obj)
 }
 
+// Close mocks base method.
+func (m *MockStore) Close() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Close")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Close indicates an expected call of Close.
+func (mr *MockStoreMockRecorder) Close() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockStore)(nil).Close))
+}
+
 // Delete mocks base method.
 func (m *MockStore) Delete(obj any) error {
 	m.ctrl.T.Helper()
@@ -197,21 +211,6 @@ func (m *MockStore) ListKeys() []string {
 func (mr *MockStoreMockRecorder) ListKeys() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListKeys", reflect.TypeOf((*MockStore)(nil).ListKeys))
-}
-
-// NewConnection mocks base method.
-func (m *MockStore) NewConnection(isTemp bool) (string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "NewConnection", isTemp)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// NewConnection indicates an expected call of NewConnection.
-func (mr *MockStoreMockRecorder) NewConnection(isTemp any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewConnection", reflect.TypeOf((*MockStore)(nil).NewConnection), isTemp)
 }
 
 // Prepare mocks base method.

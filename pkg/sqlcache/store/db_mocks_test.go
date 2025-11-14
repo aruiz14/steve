@@ -126,6 +126,20 @@ func (m *MockClient) EXPECT() *MockClientMockRecorder {
 	return m.recorder
 }
 
+// Close mocks base method.
+func (m *MockClient) Close() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Close")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Close indicates an expected call of Close.
+func (mr *MockClientMockRecorder) Close() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockClient)(nil).Close))
+}
+
 // Deserialize mocks base method.
 func (m *MockClient) Deserialize(arg0 db.SerializedObject, arg1 any) error {
 	m.ctrl.T.Helper()
@@ -138,21 +152,6 @@ func (m *MockClient) Deserialize(arg0 db.SerializedObject, arg1 any) error {
 func (mr *MockClientMockRecorder) Deserialize(arg0, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Deserialize", reflect.TypeOf((*MockClient)(nil).Deserialize), arg0, arg1)
-}
-
-// NewConnection mocks base method.
-func (m *MockClient) NewConnection(isTemp bool) (string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "NewConnection", isTemp)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// NewConnection indicates an expected call of NewConnection.
-func (mr *MockClientMockRecorder) NewConnection(isTemp any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewConnection", reflect.TypeOf((*MockClient)(nil).NewConnection), isTemp)
 }
 
 // Prepare mocks base method.

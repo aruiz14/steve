@@ -114,7 +114,7 @@ func NewCacheFactoryWithContext(ctx context.Context, opts CacheFactoryOptions) (
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	dbClient, _, err := db.NewClient(ctx, nil, m, m, false)
+	dbClient, err := db.NewClient(ctx, m, m, db.WithDBDir(db.InformerObjectCacheDBDirPrefix))
 	if err != nil {
 		cancel()
 		return nil, err

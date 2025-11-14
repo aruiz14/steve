@@ -38,20 +38,18 @@ func TestNewClient(t *testing.T) {
 
 	var tests []testCase
 
-	// Tests with shouldEncryptSet to false
-	tests = append(tests, testCase{description: "Query rows with no params, no errors", test: func(t *testing.T) {
-		c := SetupMockConnection(t)
+	tests = append(tests, testCase{description: "Configured and database files have correct permissions", test: func(t *testing.T) {
 		e := SetupMockEncryptor(t)
 		d := SetupMockDecryptor(t)
-		expectedClient := &client{
-			conn:      c,
-			encryptor: e,
-			decryptor: d,
-			encoding:  defaultEncoding,
-		}
-		client, _, err := NewClient(ctx, c, e, d, false)
+		dbDir := t.TempDir()
+		dbClient, err := NewClient(ctx, e, d, WithDBDir(dbDir))
 		assert.Nil(t, err)
-		assert.Equal(t, expectedClient, client)
+		defer dbClient.Close()
+		assert.Equal(t, d, dbClient.(*client).decryptor)
+		assert.Equal(t, e, dbClient.(*client).encryptor)
+		expectedDBPath := filepath.Join(dbDir, InformerObjectCacheDBFilename)
+		assert.FileExists(t, expectedDBPath)
+		assertFileHasPermissions(t, expectedDBPath, 0600)
 	},
 	})
 	t.Parallel()
@@ -71,7 +69,7 @@ func TestQueryForRows(t *testing.T) {
 	// Tests with shouldEncryptSet to false
 	tests = append(tests, testCase{description: "Query rows with no params, no errors", test: func(t *testing.T) {
 		c := SetupMockConnection(t)
-		client := SetupClient(t, c, nil, nil)
+		client := SetupClient(c, nil, nil)
 		s := NewMockStmt(gomock.NewController(t))
 		ctx := context.Background()
 		r := &sql.Rows{}
@@ -83,7 +81,7 @@ func TestQueryForRows(t *testing.T) {
 	})
 	tests = append(tests, testCase{description: "Query rows with params, QueryContext() error", test: func(t *testing.T) {
 		c := SetupMockConnection(t)
-		client := SetupClient(t, c, nil, nil)
+		client := SetupClient(c, nil, nil)
 		s := NewMockStmt(gomock.NewController(t))
 		ctx := context.Background()
 		s.EXPECT().QueryContext(ctx).Return(nil, fmt.Errorf("error"))
@@ -131,7 +129,7 @@ func TestQueryObjects(t *testing.T) {
 		r.EXPECT().Err().Return(nil)
 		r.EXPECT().Next().Return(false)
 		r.EXPECT().Close().Return(nil)
-		client := SetupClient(t, c, e, d)
+		client := SetupClient(c, e, d)
 		items, err := client.ReadObjects(r, reflect.TypeOf(testObject))
 		assert.Nil(t, err)
 		assert.Equal(t, 1, len(items))
@@ -150,7 +148,7 @@ func TestQueryObjects(t *testing.T) {
 		})
 		d.EXPECT().Decrypt(testObjectSerialized, testObjectSerialized, keyId).Return(nil, fmt.Errorf("error"))
 		r.EXPECT().Close().Return(nil)
-		client := SetupClient(t, c, e, d)
+		client := SetupClient(c, e, d)
 		_, err := client.ReadObjects(r, reflect.TypeOf(testObject))
 		assert.NotNil(t, err)
 	},
@@ -163,7 +161,7 @@ func TestQueryObjects(t *testing.T) {
 		r.EXPECT().Next().Return(true)
 		r.EXPECT().Scan(gomock.Any()).Return(fmt.Errorf("error"))
 		r.EXPECT().Close().Return(nil)
-		client := SetupClient(t, c, e, d)
+		client := SetupClient(c, e, d)
 		_, err := client.ReadObjects(r, reflect.TypeOf(testObject))
 		assert.NotNil(t, err)
 	},
@@ -183,7 +181,7 @@ func TestQueryObjects(t *testing.T) {
 		r.EXPECT().Err().Return(nil)
 		r.EXPECT().Next().Return(false)
 		r.EXPECT().Close().Return(fmt.Errorf("error"))
-		client := SetupClient(t, c, e, d)
+		client := SetupClient(c, e, d)
 		_, err := client.ReadObjects(r, reflect.TypeOf(testObject))
 		assert.NotNil(t, err)
 	},
@@ -196,7 +194,7 @@ func TestQueryObjects(t *testing.T) {
 		r.EXPECT().Next().Return(false)
 		r.EXPECT().Err().Return(nil)
 		r.EXPECT().Close().Return(nil)
-		client := SetupClient(t, c, e, d)
+		client := SetupClient(c, e, d)
 		items, err := client.ReadObjects(r, reflect.TypeOf(testObject))
 		assert.Nil(t, err)
 		assert.Equal(t, 0, len(items))
@@ -233,7 +231,7 @@ func TestQueryStrings(t *testing.T) {
 		r.EXPECT().Err().Return(nil)
 		r.EXPECT().Next().Return(false)
 		r.EXPECT().Close().Return(nil)
-		client := SetupClient(t, c, e, d)
+		client := SetupClient(c, e, d)
 		items, err := client.ReadStrings(r)
 		assert.Nil(t, err)
 		assert.Equal(t, 1, len(items))
@@ -247,7 +245,7 @@ func TestQueryStrings(t *testing.T) {
 		r.EXPECT().Next().Return(true)
 		r.EXPECT().Scan(gomock.Any()).Return(fmt.Errorf("error"))
 		r.EXPECT().Close().Return(nil)
-		client := SetupClient(t, c, e, d)
+		client := SetupClient(c, e, d)
 		_, err := client.ReadStrings(r)
 		assert.NotNil(t, err)
 	},
@@ -267,7 +265,7 @@ func TestQueryStrings(t *testing.T) {
 		r.EXPECT().Next().Return(false)
 		r.EXPECT().Err().Return(fmt.Errorf("error"))
 		r.EXPECT().Close().Return(nil)
-		client := SetupClient(t, c, e, d)
+		client := SetupClient(c, e, d)
 		_, err := client.ReadStrings(r)
 		assert.NotNil(t, err)
 	},
@@ -287,7 +285,7 @@ func TestQueryStrings(t *testing.T) {
 		r.EXPECT().Err().Return(nil)
 		r.EXPECT().Next().Return(false)
 		r.EXPECT().Close().Return(fmt.Errorf("error"))
-		client := SetupClient(t, c, e, d)
+		client := SetupClient(c, e, d)
 		_, err := client.ReadStrings(r)
 		assert.NotNil(t, err)
 	},
@@ -300,7 +298,7 @@ func TestQueryStrings(t *testing.T) {
 		r.EXPECT().Next().Return(false)
 		r.EXPECT().Err().Return(nil)
 		r.EXPECT().Close().Return(nil)
-		client := SetupClient(t, c, e, d)
+		client := SetupClient(c, e, d)
 		items, err := client.ReadStrings(r)
 		assert.Nil(t, err)
 		assert.Equal(t, 0, len(items))
@@ -333,7 +331,7 @@ func TestReadInt(t *testing.T) {
 		})
 		r.EXPECT().Err().Return(nil)
 		r.EXPECT().Close().Return(nil)
-		client := SetupClient(t, c, e, d)
+		client := SetupClient(c, e, d)
 		result, err := client.ReadInt(r)
 		assert.Nil(t, err)
 		assert.Equal(t, 42, result)
@@ -347,7 +345,7 @@ func TestReadInt(t *testing.T) {
 		r.EXPECT().Next().Return(true)
 		r.EXPECT().Scan(gomock.Any()).Return(fmt.Errorf("error"))
 		r.EXPECT().Close().Return(nil)
-		client := SetupClient(t, c, e, d)
+		client := SetupClient(c, e, d)
 		_, err := client.ReadInt(r)
 		assert.NotNil(t, err)
 	},
@@ -363,7 +361,7 @@ func TestReadInt(t *testing.T) {
 		})
 		r.EXPECT().Err().Return(fmt.Errorf("error"))
 		r.EXPECT().Close().Return(nil)
-		client := SetupClient(t, c, e, d)
+		client := SetupClient(c, e, d)
 		_, err := client.ReadInt(r)
 		assert.NotNil(t, err)
 	},
@@ -379,7 +377,7 @@ func TestReadInt(t *testing.T) {
 		})
 		r.EXPECT().Err().Return(nil)
 		r.EXPECT().Close().Return(fmt.Errorf("error"))
-		client := SetupClient(t, c, e, d)
+		client := SetupClient(c, e, d)
 		_, err := client.ReadInt(r)
 		assert.NotNil(t, err)
 	},
@@ -391,7 +389,7 @@ func TestReadInt(t *testing.T) {
 		r := SetupMockRows(t)
 		r.EXPECT().Next().Return(false)
 		r.EXPECT().Close().Return(nil)
-		client := SetupClient(t, c, e, d)
+		client := SetupClient(c, e, d)
 		_, err := client.ReadInt(r)
 		assert.ErrorIs(t, err, sql.ErrNoRows)
 	},
@@ -421,7 +419,7 @@ func TestUpsert(t *testing.T) {
 		e := SetupMockEncryptor(t)
 		d := SetupMockDecryptor(t)
 
-		client := SetupClient(t, c, e, d)
+		client := SetupClient(c, e, d)
 		txC := NewMockTxClient(gomock.NewController(t))
 		stmt := NewMockStmt(gomock.NewController(t))
 		txC.EXPECT().Stmt(stmt).Return(stmt)
@@ -435,7 +433,7 @@ func TestUpsert(t *testing.T) {
 		e := SetupMockEncryptor(t)
 		d := SetupMockDecryptor(t)
 
-		client := SetupClient(t, c, e, d)
+		client := SetupClient(c, e, d)
 		txC := NewMockTxClient(gomock.NewController(t))
 		stmt := NewMockStmt(gomock.NewController(t))
 		txC.EXPECT().Stmt(stmt).Return(stmt)
@@ -463,7 +461,7 @@ func TestPrepare(t *testing.T) {
 		e := SetupMockEncryptor(t)
 		d := SetupMockDecryptor(t)
 
-		client := SetupClient(t, c, e, d)
+		client := SetupClient(c, e, d)
 		sqlStmt := &sql.Stmt{}
 		c.EXPECT().Prepare("something").Return(sqlStmt, nil)
 
@@ -477,7 +475,7 @@ func TestPrepare(t *testing.T) {
 		e := SetupMockEncryptor(t)
 		d := SetupMockDecryptor(t)
 
-		client := SetupClient(t, c, e, d)
+		client := SetupClient(c, e, d)
 		c.EXPECT().Prepare("something").Return(nil, fmt.Errorf("error"))
 
 		assert.Panics(t, func() { client.Prepare("something") })
@@ -489,30 +487,35 @@ func TestPrepare(t *testing.T) {
 	}
 }
 
-func TestNewConnection(t *testing.T) {
+func TestNewClient_openDatabase(t *testing.T) {
 	type testCase struct {
 		description string
 		test        func(t *testing.T)
 	}
 
 	var tests []testCase
-	tests = append(tests, testCase{description: "NewConnection replaces file", test: func(t *testing.T) {
-		c := SetupMockConnection(t)
+	tests = append(tests, testCase{description: "ResetDB replaces file", test: func(t *testing.T) {
 		e := SetupMockEncryptor(t)
 		d := SetupMockDecryptor(t)
 
-		client := SetupClient(t, c, e, d)
-		c.EXPECT().Close().Return(nil)
+		dbDir := filepath.Join(t.TempDir(), "steve")
+		testDir := filepath.Join(dbDir, "test")
 
-		dbPath, err := client.NewConnection(true)
-		assert.Nil(t, err)
+		// Create an empty file to ensure the DB directory contents are erased
+		if err := os.MkdirAll(testDir, 0700); err != nil {
+			t.Fatal(err)
+		}
+
+		client, err := NewClient(t.Context(), e, d, WithDBDir(dbDir))
+		assert.NoError(t, err)
+		assert.NoDirExists(t, testDir)
+		dbPath := filepath.Join(dbDir, InformerObjectCacheDBFilename)
 
 		// Create a transaction to ensure that the file is written to disk.
 		err = client.WithTransaction(context.Background(), false, func(tx TxClient) error {
 			return nil
 		})
 		assert.NoError(t, err)
-
 		assert.FileExists(t, dbPath)
 		assertFileHasPermissions(t, dbPath, 0600)
 
@@ -557,14 +560,13 @@ func SetupMockRows(t *testing.T) *MockRows {
 	return MockR
 }
 
-func SetupClient(t *testing.T, connection Connection, encryptor Encryptor, decryptor Decryptor) Client {
-	t.Helper()
-	// No need to specify temp dir for this client because the connection is mocked
-	c, _, err := NewClient(t.Context(), connection, encryptor, decryptor, false)
-	if err != nil {
-		t.Fatal(err)
+func SetupClient(connection Connection, encryptor Encryptor, decryptor Decryptor) Client {
+	return &client{
+		encoding:  defaultEncoding,
+		conn:      connection,
+		encryptor: encryptor,
+		decryptor: decryptor,
 	}
-	return c
 }
 
 func TestTouchFile(t *testing.T) {

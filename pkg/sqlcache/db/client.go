@@ -16,6 +16,7 @@ import (
 	"math"
 	"net"
 	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -32,11 +33,9 @@ import (
 )
 
 const (
-	// InformerObjectCacheDBPath is where SQLite's object database file will be stored relative to process running steve
-	// It's given in two parts because the root is used as the suffix for the tempfile, and then we'll add a ".db" after it.
-	// In non-test mode, we can append the ".db" extension right here.
-	InformerObjectCacheDBPathRoot = "informer_object_cache"
-	InformerObjectCacheDBPath     = InformerObjectCacheDBPathRoot + ".db"
+	// InformerObjectCacheDBRoot is the prefix used to create a temporary directory where SQLite's object database files will be created
+	InformerObjectCacheDBDirPrefix = "informer_object_cache"
+	InformerObjectCacheDBFilename  = "db.sqlite"
 
 	informerObjectCachePerms fs.FileMode = 0o600
 
@@ -46,6 +45,7 @@ const (
 
 // Client defines a database client that provides encrypting, decrypting, and database resetting
 type Client interface {
+	Close() error
 	WithTransaction(ctx context.Context, forWriting bool, f WithTransactionFunction) error
 	Prepare(stmt string) Stmt
 	QueryForRows(ctx context.Context, stmt Stmt, params ...any) (Rows, error)
@@ -54,7 +54,6 @@ type Client interface {
 	ReadStrings2(rows Rows) ([][]string, error)
 	ReadInt(rows Rows) (int, error)
 	Upsert(tx TxClient, stmt Stmt, key string, obj SerializedObject) error
-	NewConnection(isTemp bool) (string, error)
 	Serialize(obj any, encrypt bool) (SerializedObject, error)
 	Deserialize(SerializedObject, any) error
 }
@@ -79,7 +78,7 @@ func (c *client) WithTransaction(ctx context.Context, forWriting bool, f WithTra
 
 func (c *client) withTransaction(ctx context.Context, forWriting bool, f WithTransactionFunction) error {
 	c.connLock.RLock()
-	// note: this assumes _txlock=immediate in the connection string, see NewConnection
+	// note: this assumes _txlock=immediate in the connection string, see openDatabase
 	tx, err := c.conn.BeginTx(ctx, &sql.TxOptions{
 		ReadOnly: !forWriting,
 	})
@@ -128,6 +127,7 @@ type client struct {
 	encryptor Encryptor
 	decryptor Decryptor
 	encoding  encoding
+	dbDir     string
 
 	queryLogger logging.QueryLogger
 }
@@ -170,8 +170,14 @@ type Decryptor interface {
 
 type ClientOption func(*client)
 
+func WithDBDir(dir string) ClientOption {
+	return func(c *client) {
+		c.dbDir = dir
+	}
+}
+
 // NewClient returns a client and the path to the database. If the given connection is nil then a default one will be created.
-func NewClient(ctx context.Context, c Connection, encryptor Encryptor, decryptor Decryptor, useTempDir bool, opts ...ClientOption) (Client, string, error) {
+func NewClient(ctx context.Context, encryptor Encryptor, decryptor Decryptor, opts ...ClientOption) (Client, error) {
 	client := &client{
 		encryptor: encryptor,
 		decryptor: decryptor,
@@ -180,22 +186,26 @@ func NewClient(ctx context.Context, c Connection, encryptor Encryptor, decryptor
 	for _, o := range opts {
 		o(client)
 	}
-	if c != nil {
-		client.conn = c
-		return client, "", nil
-	}
-	dbPath, err := client.NewConnection(useTempDir)
-	if err != nil {
-		return nil, "", err
+	if err := client.openDatabase(client.dbDir); err != nil {
+		return nil, err
 	}
 
 	logger, err := logging.StartQueryLogger(ctx, os.Getenv(debugQueryLogPathEnvVar), os.Getenv(debugQueryIncludeParamsPathEnvVar) == "true")
 	if err != nil {
-		return nil, "", fmt.Errorf("starting query logger: %w", err)
+		return nil, fmt.Errorf("starting query logger: %w", err)
 	}
 	client.queryLogger = logger
 
-	return client, dbPath, nil
+	return client, nil
+}
+
+func (c *client) Close() error {
+	c.connLock.Lock()
+	defer c.connLock.Unlock()
+	if c.conn == nil {
+		return nil
+	}
+	return c.conn.Close()
 }
 
 // Prepare prepares the given string into a sql statement on the client's connection.
@@ -408,46 +418,42 @@ func closeRowsOnError(rows Rows, err error) error {
 	return err
 }
 
-// NewConnection checks for currently existing connection, closes one if it exists, removes any relevant db files, and opens a new connection which subsequently
-// creates new files.
-func (c *client) NewConnection(useTempDir bool) (string, error) {
-	c.connLock.Lock()
-	defer c.connLock.Unlock()
-	if c.conn != nil {
-		err := c.conn.Close()
-		if err != nil {
-			return "", err
-		}
-	}
-	if !useTempDir {
-		for _, suffix := range []string{"", "-shm", "-wal"} {
-			f := InformerObjectCacheDBPath + suffix
-			err := os.RemoveAll(f)
-			if err != nil {
-				logrus.Errorf("error removing existing db file %s: %v", f, err)
+func prepareDatabaseDir(dbDir string) (string, string, error) {
+	if dbDir != "" {
+		if err := removeDirContents(dbDir); err != nil {
+			if !os.IsNotExist(err) {
+				return "", "", err
 			}
+			if err := os.MkdirAll(dbDir, 0700); err != nil {
+				return "", "", err
+			}
+		}
+	} else {
+		var err error
+		dbDir, err = os.MkdirTemp("", InformerObjectCacheDBDirPrefix)
+		if err != nil {
+			return "", "", err
 		}
 	}
 
 	// Set the permissions in advance, because we can't control them if
 	// the file is created by a sql.Open call instead.
-	var dbPath string
-	if useTempDir {
-		dir := os.TempDir()
-		f, err := os.CreateTemp(dir, InformerObjectCacheDBPathRoot)
-		if err != nil {
-			return "", err
-		}
-		path := f.Name()
-		dbPath = path + ".db"
-		f.Close()
-		os.Remove(path)
-	} else {
-		dbPath = InformerObjectCacheDBPath
+	dbPath := filepath.Join(dbDir, InformerObjectCacheDBFilename)
+	return dbDir, dbPath, touchFile(dbPath, informerObjectCachePerms)
+
+}
+
+// openDatabase checks for currently existing connection, closes one if it exists, removes any relevant db files, and opens a new connection which subsequently
+// creates new files.
+func (c *client) openDatabase(dbDir string) error {
+	dbDir, dbPath, err := prepareDatabaseDir(dbDir)
+	if err != nil {
+		return fmt.Errorf("preparing database directory: %w", err)
 	}
 	if err := touchFile(dbPath, informerObjectCachePerms); err != nil {
-		return dbPath, nil
+		return nil
 	}
+	c.dbDir = dbDir
 
 	sqlDB, err := sql.Open("sqlite", "file:"+dbPath+"?"+
 		// open SQLite file in read-write mode, creating it if it does not exist
@@ -469,13 +475,13 @@ func (c *client) NewConnection(useTempDir bool) (string, error) {
 		// of BeginTx
 		"_txlock=immediate")
 	if err != nil {
-		return dbPath, err
+		return err
 	}
 	sqlite.RegisterDeterministicScalarFunction("extractBarredValue", 2, extractBarredValue)
 	sqlite.RegisterDeterministicScalarFunction("inet_aton", 1, inetAtoN)
 	sqlite.RegisterDeterministicScalarFunction("memoryInBytes", 1, memoryInBytes)
 	c.conn = sqlDB
-	return dbPath, nil
+	return nil
 }
 
 func extractBarredValue(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
@@ -612,4 +618,17 @@ func touchFile(filename string, perms fs.FileMode) error {
 	}
 
 	return os.Chmod(filename, perms)
+}
+
+func removeDirContents(dirname string) error {
+	paths, err := os.ReadDir(dirname)
+	if err != nil {
+		return err
+	}
+	for _, path := range paths {
+		if err := os.RemoveAll(filepath.Join(dirname, path.Name())); err != nil {
+			return err
+		}
+	}
+	return nil
 }
