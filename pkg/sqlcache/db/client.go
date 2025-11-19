@@ -21,7 +21,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/rancher/steve/pkg/sqlcache/db/logging"
 
@@ -77,12 +76,10 @@ func (c *client) WithTransaction(ctx context.Context, forWriting bool, f WithTra
 }
 
 func (c *client) withTransaction(ctx context.Context, forWriting bool, f WithTransactionFunction) error {
-	c.connLock.RLock()
 	// note: this assumes _txlock=immediate in the connection string, see openDatabase
 	tx, err := c.conn.BeginTx(ctx, &sql.TxOptions{
 		ReadOnly: !forWriting,
 	})
-	c.connLock.RUnlock()
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
@@ -123,7 +120,6 @@ type WithTransactionFunction func(tx TxClient) error
 // client is the main implementation of Client. Other implementations exist for test purposes
 type client struct {
 	conn      Connection
-	connLock  sync.RWMutex
 	encryptor Encryptor
 	decryptor Decryptor
 	encoding  encoding
@@ -200,8 +196,6 @@ func NewClient(ctx context.Context, encryptor Encryptor, decryptor Decryptor, op
 }
 
 func (c *client) Close() error {
-	c.connLock.Lock()
-	defer c.connLock.Unlock()
 	if c.conn == nil {
 		return nil
 	}
@@ -210,8 +204,6 @@ func (c *client) Close() error {
 
 // Prepare prepares the given string into a sql statement on the client's connection.
 func (c *client) Prepare(queryString string) Stmt {
-	c.connLock.RLock()
-	defer c.connLock.RUnlock()
 	prepared, err := c.conn.Prepare(queryString)
 	if err != nil {
 		panic(fmt.Errorf("Error preparing statement: %s\n%w", queryString, err))
@@ -225,18 +217,12 @@ func (c *client) Prepare(queryString string) Stmt {
 // QueryForRows queries the given stmt with the given params and returns the resulting rows. The query wil be retried
 // given a sqlite busy error.
 func (c *client) QueryForRows(ctx context.Context, stmt Stmt, params ...any) (Rows, error) {
-	c.connLock.RLock()
-	defer c.connLock.RUnlock()
-
 	return stmt.QueryContext(ctx, params...)
 }
 
 // ReadObjects Scans the given rows, performs any necessary decryption, converts the data to objects of the given type,
 // and returns a slice of those objects.
 func (c *client) ReadObjects(rows Rows, typ reflect.Type) ([]any, error) {
-	c.connLock.RLock()
-	defer c.connLock.RUnlock()
-
 	var result []any
 	for rows.Next() {
 		row, err := c.readRow(rows)
@@ -264,9 +250,6 @@ func (c *client) ReadObjects(rows Rows, typ reflect.Type) ([]any, error) {
 
 // ReadStrings scans the given rows into strings, and then returns the strings as a slice.
 func (c *client) ReadStrings(rows Rows) ([]string, error) {
-	c.connLock.RLock()
-	defer c.connLock.RUnlock()
-
 	var result []string
 	for rows.Next() {
 		var key string
@@ -292,9 +275,6 @@ func (c *client) ReadStrings(rows Rows) ([]string, error) {
 
 // ReadStrings2 scans the given rows into pairs of strings, and then returns the strings as a slice.
 func (c *client) ReadStrings2(rows Rows) ([][]string, error) {
-	c.connLock.RLock()
-	defer c.connLock.RUnlock()
-
 	var result [][]string
 	for rows.Next() {
 		var key1, key2 string
@@ -320,9 +300,6 @@ func (c *client) ReadStrings2(rows Rows) ([][]string, error) {
 
 // ReadInt scans the first of the given rows into a single int (eg. for COUNT() queries)
 func (c *client) ReadInt(rows Rows) (int, error) {
-	c.connLock.RLock()
-	defer c.connLock.RUnlock()
-
 	if !rows.Next() {
 		return 0, closeRowsOnError(rows, sql.ErrNoRows)
 	}
