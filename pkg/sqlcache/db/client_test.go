@@ -475,7 +475,7 @@ func TestNewClient_openDatabase(t *testing.T) {
 		dbPath := filepath.Join(dbDir, InformerObjectCacheDBFilename)
 
 		// Create a transaction to ensure that the file is written to disk.
-		err = client.WithTransaction(context.Background(), false, func(tx TxClient) error {
+		err = client.ReadOnlyTransaction(context.Background(), func(tx TxClient) error {
 			return nil
 		})
 		assert.NoError(t, err)

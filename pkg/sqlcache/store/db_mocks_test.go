@@ -198,6 +198,20 @@ func (mr *MockClientMockRecorder) ReadObjects(rows, typ any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadObjects", reflect.TypeOf((*MockClient)(nil).ReadObjects), rows, typ)
 }
 
+// ReadOnlyTransaction mocks base method.
+func (m *MockClient) ReadOnlyTransaction(ctx context.Context, f db.WithTransactionFunction) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReadOnlyTransaction", ctx, f)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReadOnlyTransaction indicates an expected call of ReadOnlyTransaction.
+func (mr *MockClientMockRecorder) ReadOnlyTransaction(ctx, f any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadOnlyTransaction", reflect.TypeOf((*MockClient)(nil).ReadOnlyTransaction), ctx, f)
+}
+
 // ReadStrings mocks base method.
 func (m *MockClient) ReadStrings(rows db.Rows) ([]string, error) {
 	m.ctrl.T.Helper()
@@ -257,18 +271,18 @@ func (mr *MockClientMockRecorder) Upsert(tx, stmt, key, obj any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Upsert", reflect.TypeOf((*MockClient)(nil).Upsert), tx, stmt, key, obj)
 }
 
-// WithTransaction mocks base method.
-func (m *MockClient) WithTransaction(ctx context.Context, forWriting bool, f db.WithTransactionFunction) error {
+// WriteTransaction mocks base method.
+func (m *MockClient) WriteTransaction(ctx context.Context, f db.WithTransactionFunction) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "WithTransaction", ctx, forWriting, f)
+	ret := m.ctrl.Call(m, "WriteTransaction", ctx, f)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// WithTransaction indicates an expected call of WithTransaction.
-func (mr *MockClientMockRecorder) WithTransaction(ctx, forWriting, f any) *gomock.Call {
+// WriteTransaction indicates an expected call of WriteTransaction.
+func (mr *MockClientMockRecorder) WriteTransaction(ctx, f any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WithTransaction", reflect.TypeOf((*MockClient)(nil).WithTransaction), ctx, forWriting, f)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteTransaction", reflect.TypeOf((*MockClient)(nil).WriteTransaction), ctx, f)
 }
 
 // MockTxClient is a mock of TxClient interface.

@@ -51,8 +51,8 @@ func TestNewIndexer(t *testing.T) {
 		store.EXPECT().GetName().AnyTimes().Return(storeName)
 		client.EXPECT().Exec(fmt.Sprintf(createTableFmt, storeName, storeName)).Return(nil, nil)
 		client.EXPECT().Exec(fmt.Sprintf(createIndexFmt, storeName, storeName)).Return(nil, nil)
-		store.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(nil).Do(
-			func(ctx context.Context, shouldEncrypt bool, f db.WithTransactionFunction) {
+		store.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(nil).Do(
+			func(ctx context.Context, f db.WithTransactionFunction) {
 				err := f(client)
 				if err != nil {
 					t.Fail()
@@ -81,7 +81,7 @@ func TestNewIndexer(t *testing.T) {
 			},
 		}
 		store.EXPECT().GetName().AnyTimes().Return("someStoreName")
-		store.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(fmt.Errorf("error"))
+		store.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(fmt.Errorf("error"))
 		_, err := NewIndexer(context.Background(), indexers, store)
 		assert.NotNil(t, err)
 	}})
@@ -100,8 +100,8 @@ func TestNewIndexer(t *testing.T) {
 		store.EXPECT().GetName().AnyTimes().Return(storeName)
 		client.EXPECT().Exec(fmt.Sprintf(createTableFmt, storeName, storeName)).Return(nil, fmt.Errorf("error"))
 
-		store.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(fmt.Errorf("error")).Do(
-			func(ctx context.Context, shouldEncrypt bool, f db.WithTransactionFunction) {
+		store.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(fmt.Errorf("error")).Do(
+			func(ctx context.Context, f db.WithTransactionFunction) {
 				err := f(client)
 				if err == nil {
 					t.Fail()
@@ -126,8 +126,8 @@ func TestNewIndexer(t *testing.T) {
 		client.EXPECT().Exec(fmt.Sprintf(createTableFmt, storeName, storeName)).Return(nil, nil)
 		client.EXPECT().Exec(fmt.Sprintf(createIndexFmt, storeName, storeName)).Return(nil, fmt.Errorf("error"))
 
-		store.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(fmt.Errorf("error")).Do(
-			func(ctx context.Context, shouldEncrypt bool, f db.WithTransactionFunction) {
+		store.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(fmt.Errorf("error")).Do(
+			func(ctx context.Context, f db.WithTransactionFunction) {
 				err := f(client)
 				if err == nil {
 					t.Fail()
@@ -152,8 +152,8 @@ func TestNewIndexer(t *testing.T) {
 		store.EXPECT().GetName().AnyTimes().Return(storeName)
 		client.EXPECT().Exec(fmt.Sprintf(createTableFmt, storeName, storeName)).Return(nil, nil)
 		client.EXPECT().Exec(fmt.Sprintf(createIndexFmt, storeName, storeName)).Return(nil, nil)
-		store.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(fmt.Errorf("error")).Do(
-			func(ctx context.Context, shouldEncrypt bool, f db.WithTransactionFunction) {
+		store.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(fmt.Errorf("error")).Do(
+			func(ctx context.Context, f db.WithTransactionFunction) {
 				err := f(client)
 				if err != nil {
 					t.Fail()

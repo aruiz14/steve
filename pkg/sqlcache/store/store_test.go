@@ -61,8 +61,8 @@ func TestAdd(t *testing.T) {
 		expectedObj := getExpectedObj(shouldEncrypt)
 		c.EXPECT().Serialize(testObject, shouldEncrypt).Return(expectedObj, nil)
 		c.EXPECT().Upsert(txC, store.upsertStmt, "something", expectedObj).Return(nil)
-		c.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(nil).Do(
-			func(ctx context.Context, shouldEncrypt bool, f db.WithTransactionFunction) {
+		c.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(nil).Do(
+			func(ctx context.Context, f db.WithTransactionFunction) {
 				err := f(txC)
 				if err != nil {
 					t.Fail()
@@ -81,8 +81,8 @@ func TestAdd(t *testing.T) {
 		expectedObj := getExpectedObj(shouldEncrypt)
 		c.EXPECT().Serialize(testObject, shouldEncrypt).Return(expectedObj, nil)
 		c.EXPECT().Upsert(txC, store.upsertStmt, "something", expectedObj).Return(nil)
-		c.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(nil).Do(
-			func(ctx context.Context, shouldEncrypt bool, f db.WithTransactionFunction) {
+		c.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(nil).Do(
+			func(ctx context.Context, f db.WithTransactionFunction) {
 				err := f(txC)
 				if err != nil {
 					t.Fail()
@@ -107,8 +107,8 @@ func TestAdd(t *testing.T) {
 		expectedObj := getExpectedObj(shouldEncrypt)
 		c.EXPECT().Serialize(testObject, shouldEncrypt).Return(expectedObj, nil)
 		c.EXPECT().Upsert(txC, store.upsertStmt, "something", expectedObj).Return(nil)
-		c.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(fmt.Errorf("error")).Do(
-			func(ctx context.Context, shouldEncrypt bool, f db.WithTransactionFunction) {
+		c.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(fmt.Errorf("error")).Do(
+			func(ctx context.Context, f db.WithTransactionFunction) {
 				err := f(txC)
 				if err == nil {
 					t.Fail()
@@ -126,7 +126,7 @@ func TestAdd(t *testing.T) {
 	tests = append(tests, testCase{description: "Add with DB client WithTransaction error", test: func(t *testing.T, shouldEncrypt bool) {
 		c, _ := SetupMockDB(t)
 		c.EXPECT().Serialize(testObject, shouldEncrypt).Return(getExpectedObj(shouldEncrypt), nil)
-		c.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(fmt.Errorf("failed"))
+		c.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(fmt.Errorf("failed"))
 
 		store := SetupStore(t, c, shouldEncrypt)
 		err := store.Add(testObject)
@@ -139,8 +139,8 @@ func TestAdd(t *testing.T) {
 		expectedObj := getExpectedObj(shouldEncrypt)
 		c.EXPECT().Serialize(testObject, shouldEncrypt).Return(expectedObj, nil)
 		c.EXPECT().Upsert(txC, store.upsertStmt, "something", expectedObj).Return(fmt.Errorf("failed"))
-		c.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(fmt.Errorf("failed")).Do(
-			func(ctx context.Context, shouldEncrypt bool, f db.WithTransactionFunction) {
+		c.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(fmt.Errorf("failed")).Do(
+			func(ctx context.Context, f db.WithTransactionFunction) {
 				err := f(txC)
 				if err == nil {
 					t.Fail()
@@ -157,8 +157,8 @@ func TestAdd(t *testing.T) {
 		expectedObj := getExpectedObj(shouldEncrypt)
 		c.EXPECT().Serialize(testObject, shouldEncrypt).Return(expectedObj, nil)
 		c.EXPECT().Upsert(txC, store.upsertStmt, "something", expectedObj).Return(nil)
-		c.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(fmt.Errorf("failed")).Do(
-			func(ctx context.Context, shouldEncrypt bool, f db.WithTransactionFunction) {
+		c.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(fmt.Errorf("failed")).Do(
+			func(ctx context.Context, f db.WithTransactionFunction) {
 				err := f(txC)
 				if err != nil {
 					t.Fail()
@@ -203,8 +203,8 @@ func TestUpdate(t *testing.T) {
 		expectedObj := getExpectedObj(shouldEncrypt)
 		c.EXPECT().Serialize(testObject, shouldEncrypt).Return(expectedObj, nil)
 		c.EXPECT().Upsert(txC, store.upsertStmt, "something", expectedObj).Return(nil)
-		c.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(nil).Do(
-			func(ctx context.Context, shouldEncrypt bool, f db.WithTransactionFunction) {
+		c.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(nil).Do(
+			func(ctx context.Context, f db.WithTransactionFunction) {
 				err := f(txC)
 				if err != nil {
 					t.Fail()
@@ -222,8 +222,8 @@ func TestUpdate(t *testing.T) {
 		expectedObj := getExpectedObj(shouldEncrypt)
 		c.EXPECT().Serialize(testObject, shouldEncrypt).Return(expectedObj, nil)
 		c.EXPECT().Upsert(txC, store.upsertStmt, "something", expectedObj).Return(nil)
-		c.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(nil).Do(
-			func(ctx context.Context, shouldEncrypt bool, f db.WithTransactionFunction) {
+		c.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(nil).Do(
+			func(ctx context.Context, f db.WithTransactionFunction) {
 				err := f(txC)
 				if err != nil {
 					t.Fail()
@@ -249,8 +249,8 @@ func TestUpdate(t *testing.T) {
 		c.EXPECT().Serialize(testObject, shouldEncrypt).Return(expectedObj, nil)
 		c.EXPECT().Upsert(txC, store.upsertStmt, "something", expectedObj).Return(nil)
 
-		c.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(fmt.Errorf("error")).Do(
-			func(ctx context.Context, shouldEncrypt bool, f db.WithTransactionFunction) {
+		c.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(fmt.Errorf("error")).Do(
+			func(ctx context.Context, f db.WithTransactionFunction) {
 				err := f(txC)
 				if err == nil {
 					t.Fail()
@@ -269,7 +269,7 @@ func TestUpdate(t *testing.T) {
 		c, _ := SetupMockDB(t)
 
 		c.EXPECT().Serialize(testObject, shouldEncrypt).Return(getExpectedObj(shouldEncrypt), nil)
-		c.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(fmt.Errorf("error"))
+		c.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(fmt.Errorf("error"))
 
 		store := SetupStore(t, c, shouldEncrypt)
 		err := store.Update(testObject)
@@ -283,8 +283,8 @@ func TestUpdate(t *testing.T) {
 		expectedObj := getExpectedObj(shouldEncrypt)
 		c.EXPECT().Serialize(testObject, shouldEncrypt).Return(expectedObj, nil)
 		c.EXPECT().Upsert(txC, store.upsertStmt, "something", expectedObj).Return(fmt.Errorf("failed"))
-		c.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(fmt.Errorf("error")).Do(
-			func(ctx context.Context, shouldEncrypt bool, f db.WithTransactionFunction) {
+		c.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(fmt.Errorf("error")).Do(
+			func(ctx context.Context, f db.WithTransactionFunction) {
 				err := f(txC)
 				if err == nil {
 					t.Fail()
@@ -320,8 +320,8 @@ func TestDelete(t *testing.T) {
 		txC.EXPECT().Stmt(store.deleteStmt).Return(stmt)
 		stmt.EXPECT().Exec(testObject.Id).Return(nil, nil)
 
-		c.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(nil).Do(
-			func(ctx context.Context, shouldEncrypt bool, f db.WithTransactionFunction) {
+		c.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(nil).Do(
+			func(ctx context.Context, f db.WithTransactionFunction) {
 				err := f(txC)
 				if err != nil {
 					t.Fail()
@@ -335,7 +335,7 @@ func TestDelete(t *testing.T) {
 	tests = append(tests, testCase{description: "Delete with DB client WithTransaction returning error", test: func(t *testing.T, shouldEncrypt bool) {
 		c, _ := SetupMockDB(t)
 		store := SetupStore(t, c, shouldEncrypt)
-		c.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(fmt.Errorf("error"))
+		c.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(fmt.Errorf("error"))
 		err := store.Delete(testObject)
 		assert.NotNil(t, err)
 	},
@@ -347,8 +347,8 @@ func TestDelete(t *testing.T) {
 		txC.EXPECT().Stmt(store.deleteStmt).Return(stmt)
 		stmt.EXPECT().Exec(testObject.Id).Return(nil, fmt.Errorf("error"))
 
-		c.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(fmt.Errorf("error")).Do(
-			func(ctx context.Context, shouldEncrypt bool, f db.WithTransactionFunction) {
+		c.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(fmt.Errorf("error")).Do(
+			func(ctx context.Context, f db.WithTransactionFunction) {
 				err := f(txC)
 				if err == nil {
 					t.Fail()
@@ -366,8 +366,8 @@ func TestDelete(t *testing.T) {
 		txC.EXPECT().Stmt(store.deleteStmt).Return(stmt)
 		stmt.EXPECT().Exec(testObject.Id).Return(nil, nil)
 
-		c.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(fmt.Errorf("error")).Do(
-			func(ctx context.Context, shouldEncrypt bool, f db.WithTransactionFunction) {
+		c.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(fmt.Errorf("error")).Do(
+			func(ctx context.Context, f db.WithTransactionFunction) {
 				err := f(txC)
 				if err != nil {
 					t.Fail()
@@ -606,8 +606,8 @@ func TestReplace(t *testing.T) {
 		c.EXPECT().Serialize(testObject, shouldEncrypt).Return(expectedObj, nil)
 		c.EXPECT().Upsert(txC, store.upsertStmt, testObject.Id, expectedObj)
 
-		c.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(nil).Do(
-			func(ctx context.Context, shouldEncrypt bool, f db.WithTransactionFunction) {
+		c.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(nil).Do(
+			func(ctx context.Context, f db.WithTransactionFunction) {
 				err := f(txC)
 				if err != nil {
 					t.Fail()
@@ -630,8 +630,8 @@ func TestReplace(t *testing.T) {
 		c.EXPECT().Serialize(testObject, shouldEncrypt).Return(expectedObj, nil)
 		c.EXPECT().Upsert(txC, store.upsertStmt, testObject.Id, expectedObj)
 
-		c.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(nil).Do(
-			func(ctx context.Context, shouldEncrypt bool, f db.WithTransactionFunction) {
+		c.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(nil).Do(
+			func(ctx context.Context, f db.WithTransactionFunction) {
 				err := f(txC)
 				if err != nil {
 					t.Fail()
@@ -646,7 +646,7 @@ func TestReplace(t *testing.T) {
 		c, _ := SetupMockDB(t)
 		store := SetupStore(t, c, shouldEncrypt)
 		c.EXPECT().Serialize(testObject, shouldEncrypt).Return(getExpectedObj(shouldEncrypt), nil)
-		c.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(fmt.Errorf("error"))
+		c.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(fmt.Errorf("error"))
 
 		err := store.Replace([]any{testObject}, testObject.Id)
 		assert.NotNil(t, err)
@@ -662,8 +662,8 @@ func TestReplace(t *testing.T) {
 		txC.EXPECT().Stmt(store.deleteAllStmt).Return(deleteAllStmt)
 		deleteAllStmt.EXPECT().Exec().Return(nil, fmt.Errorf("error"))
 
-		c.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(fmt.Errorf("error")).Do(
-			func(ctx context.Context, shouldEncrypt bool, f db.WithTransactionFunction) {
+		c.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(fmt.Errorf("error")).Do(
+			func(ctx context.Context, f db.WithTransactionFunction) {
 				err := f(txC)
 				if err == nil {
 					t.Fail()
@@ -686,8 +686,8 @@ func TestReplace(t *testing.T) {
 		c.EXPECT().Serialize(testObject, shouldEncrypt).Return(expectedObj, nil)
 		c.EXPECT().Upsert(txC, store.upsertStmt, testObject.Id, expectedObj).Return(fmt.Errorf("error"))
 
-		c.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(fmt.Errorf("error")).Do(
-			func(ctx context.Context, shouldEncrypt bool, f db.WithTransactionFunction) {
+		c.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(fmt.Errorf("error")).Do(
+			func(ctx context.Context, f db.WithTransactionFunction) {
 				err := f(txC)
 				if err == nil {
 					t.Fail()
@@ -794,8 +794,8 @@ func TestAddWithOneUpdate(t *testing.T) {
 
 			c.EXPECT().Serialize(testObject, false).Return(testObjectSerialized, nil)
 			c.EXPECT().Upsert(txC, store.upsertStmt, "testStoreObject", testObjectSerialized).Return(nil)
-			c.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(nil).Do(
-				func(ctx context.Context, shouldEncrypt bool, f db.WithTransactionFunction) {
+			c.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(nil).Do(
+				func(ctx context.Context, f db.WithTransactionFunction) {
 					err := f(txC)
 					if err != nil {
 						t.Fail()
@@ -863,8 +863,8 @@ func TestAddWithExternalUpdates(t *testing.T) {
 
 		c.EXPECT().Serialize(testObject, false).Return(testObjectSerialized, nil)
 		c.EXPECT().Upsert(txC, store.upsertStmt, "testStoreObject", testObjectSerialized).Return(nil)
-		c.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(nil).Do(
-			func(ctx context.Context, shouldEncrypt bool, f db.WithTransactionFunction) {
+		c.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(nil).Do(
+			func(ctx context.Context, f db.WithTransactionFunction) {
 				err := f(txC)
 				if err != nil {
 					t.Fail()
@@ -942,8 +942,8 @@ func TestAddWithSelfUpdates(t *testing.T) {
 
 		c.EXPECT().Serialize(testObject, false).Return(testObjectSerialized, nil)
 		c.EXPECT().Upsert(txC, store.upsertStmt, "testStoreObject", testObjectSerialized).Return(nil)
-		c.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(nil).Do(
-			func(ctx context.Context, shouldEncrypt bool, f db.WithTransactionFunction) {
+		c.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(nil).Do(
+			func(ctx context.Context, f db.WithTransactionFunction) {
 				err := f(txC)
 				if err != nil {
 					t.Fail()
@@ -1029,16 +1029,16 @@ func TestAddWithBothUpdates(t *testing.T) {
 
 		c.EXPECT().Serialize(testObject, false).Return(testObjectSerialized, nil)
 		c.EXPECT().Upsert(txC, store.upsertStmt, "testStoreObject", testObjectSerialized).Return(nil)
-		c.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(nil).Do(
-			func(ctx context.Context, shouldEncrypt bool, f db.WithTransactionFunction) {
+		c.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(nil).Do(
+			func(ctx context.Context, f db.WithTransactionFunction) {
 				err := f(txC)
 				if err != nil {
 					t.Fail()
 				}
 			})
 		for range 2 {
-			c.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(nil).Do(
-				func(ctx context.Context, shouldEncrypt bool, f db.WithTransactionFunction) {
+			c.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(nil).Do(
+				func(ctx context.Context, f db.WithTransactionFunction) {
 					err := f(txC)
 					if err != nil {
 						t.Fail()
@@ -1096,8 +1096,8 @@ func SetupMockDB(t *testing.T) (*MockClient, *MockTxClient) {
 	txC := NewMockTxClient(ctrl)
 	stmt := NewMockStmt(ctrl)
 	txC.EXPECT().Exec(fmt.Sprintf(createTableFmt, "testStoreObject")).Return(nil, nil)
-	dbC.EXPECT().WithTransaction(gomock.Any(), true, gomock.Any()).Return(nil).Do(
-		func(ctx context.Context, shouldEncrypt bool, f db.WithTransactionFunction) {
+	dbC.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(nil).Do(
+		func(ctx context.Context, f db.WithTransactionFunction) {
 			err := f(txC)
 			if err != nil {
 				t.Fail()
