@@ -81,7 +81,7 @@ type Store interface {
 func NewIndexer(ctx context.Context, indexers cache.Indexers, s Store) (*Indexer, error) {
 	dbName := db.Sanitize(s.GetName())
 
-	err := s.WithTransaction(ctx, true, func(tx db.TxClient) error {
+	err := s.WriteTransaction(ctx, func(tx db.TxClient) error {
 		createTableQuery := fmt.Sprintf(createTableFmt, dbName)
 		if _, err := tx.Exec(createTableQuery); err != nil {
 			return err

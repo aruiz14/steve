@@ -98,7 +98,7 @@ func NewStore(ctx context.Context, example any, keyFunc cache.KeyFunc, c db.Clie
 	dbName := db.Sanitize(s.name)
 
 	// once multiple informer-factories are needed, this can accept the case where table already exists error is received
-	err := s.WithTransaction(ctx, true, func(tx db.TxClient) error {
+	err := s.WriteTransaction(ctx, func(tx db.TxClient) error {
 		createTableQuery := fmt.Sprintf(createTableFmt, dbName)
 		_, err := tx.Exec(createTableQuery)
 		return err
@@ -125,7 +125,7 @@ func isDBError(e error) bool {
 func (s *Store) checkUpdateExternalInfo(key string) {
 	for _, updateBlock := range []*sqltypes.ExternalGVKUpdates{s.externalUpdateInfo, s.selfUpdateInfo} {
 		if updateBlock != nil {
-			s.WithTransaction(s.ctx, true, func(tx db.TxClient) error {
+			s.WriteTransaction(s.ctx, func(tx db.TxClient) error {
 				err := s.updateExternalInfo(tx, key, updateBlock)
 				if err != nil && !isDBError(err) {
 					// Just report and ignore errors
@@ -307,7 +307,7 @@ func (s *Store) overrideCheck(tx db.TxClient, finalFieldName, sourceGVK, sourceK
 
 // deleteByKey deletes the object associated with key, if it exists in this Store
 func (s *Store) deleteByKey(key string, obj any) error {
-	return s.WithTransaction(s.ctx, true, func(tx db.TxClient) error {
+	return s.WriteTransaction(s.ctx, func(tx db.TxClient) error {
 		if _, err := tx.Stmt(s.deleteStmt).Exec(key); err != nil {
 			return err
 		}
@@ -348,7 +348,7 @@ func (s *Store) Add(obj any) error {
 		return err
 	}
 
-	err = s.WithTransaction(s.ctx, true, func(tx db.TxClient) error {
+	err = s.WriteTransaction(s.ctx, func(tx db.TxClient) error {
 		if err := s.Upsert(tx, s.upsertStmt, key, serialized); err != nil {
 			return err
 		}
@@ -373,7 +373,7 @@ func (s *Store) Update(obj any) error {
 		return err
 	}
 
-	err = s.WithTransaction(s.ctx, true, func(tx db.TxClient) error {
+	err = s.WriteTransaction(s.ctx, func(tx db.TxClient) error {
 		if err := s.Upsert(tx, s.upsertStmt, key, serialized); err != nil {
 			return err
 		}
@@ -471,7 +471,7 @@ func (s *Store) replaceByKey(objects map[string]any) error {
 		}
 		serializedObjects[key] = serialized
 	}
-	return s.WithTransaction(s.ctx, true, func(txC db.TxClient) error {
+	return s.WriteTransaction(s.ctx, func(txC db.TxClient) error {
 		if _, err := txC.Stmt(s.deleteAllStmt).Exec(); err != nil {
 			return err
 		}
@@ -541,7 +541,7 @@ func (s *Store) RegisterBeforeDropAll(f func(txC db.TxClient) error) {
 //
 // The store shouldn't be used once DropAll is called.
 func (s *Store) DropAll(ctx context.Context) error {
-	err := s.WithTransaction(ctx, true, func(tx db.TxClient) error {
+	err := s.WriteTransaction(ctx, func(tx db.TxClient) error {
 		if err := s.runBeforeDropAll(tx); err != nil {
 			return err
 		}

@@ -45,7 +45,6 @@ const (
 // Client defines a database client that provides encrypting, decrypting, and database resetting
 type Client interface {
 	Close() error
-	WithTransaction(ctx context.Context, forWriting bool, f WithTransactionFunction) error
 	Prepare(stmt string) Stmt
 	ReadObjects(rows Rows, typ reflect.Type) ([]any, error)
 	ReadStrings(rows Rows) ([]string, error)
@@ -54,9 +53,11 @@ type Client interface {
 	Upsert(tx TxClient, stmt Stmt, key string, obj SerializedObject) error
 	Serialize(obj any, encrypt bool) (SerializedObject, error)
 	Deserialize(SerializedObject, any) error
+	WriteTransaction(ctx context.Context, f WithTransactionFunction) error
+	ReadOnlyTransaction(ctx context.Context, f WithTransactionFunction) error
 }
 
-// WithTransaction runs f within a transaction.
+// withTransaction runs f within a transaction.
 //
 // If forWriting is true, this method blocks until all other concurrent forWriting
 // transactions have either committed or rolled back.
@@ -67,13 +68,6 @@ type Client interface {
 // See discussion in https://github.com/rancher/lasso/pull/98 for details
 //
 // The transaction is committed if f returns nil, otherwise it is rolled back.
-func (c *client) WithTransaction(ctx context.Context, forWriting bool, f WithTransactionFunction) error {
-	if err := c.withTransaction(ctx, forWriting, f); err != nil {
-		return fmt.Errorf("transaction: %w", err)
-	}
-	return nil
-}
-
 func (c *client) withTransaction(ctx context.Context, forWriting bool, f WithTransactionFunction) error {
 	// note: this assumes _txlock=immediate in the connection string, see openDatabase
 	tx, err := c.conn.BeginTx(ctx, &sql.TxOptions{

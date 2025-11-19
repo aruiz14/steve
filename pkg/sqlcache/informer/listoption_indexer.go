@@ -216,7 +216,7 @@ func NewListOptionIndexer(ctx context.Context, s Store, opts ListOptionIndexerOp
 	qmarks := make([]string, 0, len(indexedFields))
 	setStatements := make([]string, 0, len(indexedFields))
 
-	err = l.WithTransaction(ctx, true, func(tx db.TxClient) error {
+	err = l.WriteTransaction(ctx, func(tx db.TxClient) error {
 		createEventsTableQuery := fmt.Sprintf(createEventsTableFmt, dbName)
 		if _, err := tx.Exec(createEventsTableQuery); err != nil {
 			return err
@@ -326,7 +326,7 @@ func (l *ListOptionIndexer) Watch(ctx context.Context, opts WatchOptions, events
 		targetRV = latestRV
 	}
 
-	if err := l.WithTransaction(ctx, false, func(tx db.TxClient) error {
+	if err := l.ReadOnlyTransaction(ctx, func(tx db.TxClient) error {
 		rows, err := tx.Stmt(l.findEventsRowByRVStmt).QueryContext(ctx, targetRV)
 		if err != nil {
 			return err
@@ -933,7 +933,7 @@ func (l *ListOptionIndexer) executeQuery(ctx context.Context, queryInfo *QueryIn
 	}()
 
 	var items []any
-	err = l.WithTransaction(ctx, false, func(tx db.TxClient) error {
+	err = l.ReadOnlyTransaction(ctx, func(tx db.TxClient) error {
 		now := time.Now()
 		rows, err := tx.Stmt(stmt).QueryContext(ctx, queryInfo.params...)
 		if err != nil {
@@ -1633,7 +1633,7 @@ func (l *ListOptionIndexer) RunGC(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
-			err := l.WithTransaction(ctx, true, func(tx db.TxClient) error {
+			err := l.WriteTransaction(ctx, func(tx db.TxClient) error {
 				_, err := tx.Stmt(l.deleteEventsByCountStmt).Exec(l.gcKeepCount)
 				return err
 			})
