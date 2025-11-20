@@ -58,6 +58,7 @@ require (
 	modernc.org/sqlite v1.39.0
 	sigs.k8s.io/controller-runtime v0.21.0
 	sigs.k8s.io/yaml v1.6.0
+	zombiezen.com/go/sqlite v1.4.2
 )
 
 require (

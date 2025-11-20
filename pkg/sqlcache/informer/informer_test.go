@@ -36,7 +36,6 @@ func TestNewInformer(t *testing.T) {
 		dbClient := NewMockClient(ctrl)
 		txClient := NewMockTxClient(ctrl)
 		dynamicClient := NewMockResourceInterface(ctrl)
-		stmt := NewMockStmt(ctrl)
 
 		fields := [][]string{{"something"}}
 		gvk := schema.GroupVersionKind{}
@@ -51,7 +50,7 @@ func TestNewInformer(t *testing.T) {
 					t.Fail()
 				}
 			})
-		dbClient.EXPECT().Prepare(gomock.Any()).Return(stmt).AnyTimes()
+		dbClient.EXPECT().Prepare(gomock.Any()).DoAndReturn(toVirtualStmt).AnyTimes()
 
 		// NewIndexer() logic (within NewListOptionIndexer(). This test is only concerned with whether it returns err or not as NewIndexer
 		// is tested in depth in its own indexer_test.go
@@ -113,7 +112,6 @@ func TestNewInformer(t *testing.T) {
 		dbClient := NewMockClient(ctrl)
 		txClient := NewMockTxClient(ctrl)
 		dynamicClient := NewMockResourceInterface(ctrl)
-		stmt := NewMockStmt(ctrl)
 
 		fields := [][]string{{"something"}}
 		gvk := schema.GroupVersionKind{}
@@ -129,7 +127,7 @@ func TestNewInformer(t *testing.T) {
 					t.Fail()
 				}
 			})
-		dbClient.EXPECT().Prepare(gomock.Any()).Return(stmt).AnyTimes()
+		dbClient.EXPECT().Prepare(gomock.Any()).DoAndReturn(toVirtualStmt).AnyTimes()
 
 		// NewIndexer() logic (within NewListOptionIndexer(). This test is only concerned with whether it returns err or not as NewIndexer
 		// is tested in depth in its own indexer_test.go
@@ -150,7 +148,6 @@ func TestNewInformer(t *testing.T) {
 		dbClient := NewMockClient(ctrl)
 		txClient := NewMockTxClient(ctrl)
 		dynamicClient := NewMockResourceInterface(ctrl)
-		stmt := NewMockStmt(ctrl)
 
 		fields := [][]string{{"something"}}
 		gvk := schema.GroupVersionKind{}
@@ -167,7 +164,7 @@ func TestNewInformer(t *testing.T) {
 					t.Fail()
 				}
 			})
-		dbClient.EXPECT().Prepare(gomock.Any()).Return(stmt).AnyTimes()
+		dbClient.EXPECT().Prepare(gomock.Any()).DoAndReturn(toVirtualStmt).AnyTimes()
 
 		// NewIndexer() logic (within NewListOptionIndexer(). This test is only concerned with whether it returns err or not as NewIndexer
 		// is tested in depth in its own indexer_test.go
@@ -205,7 +202,6 @@ func TestNewInformer(t *testing.T) {
 		dbClient := NewMockClient(ctrl)
 		txClient := NewMockTxClient(ctrl)
 		dynamicClient := NewMockResourceInterface(ctrl)
-		stmt := NewMockStmt(ctrl)
 		mockInformer := mockInformer{}
 		testNewInformer := func(lw cache.ListerWatcher,
 			exampleObject runtime.Object,
@@ -230,7 +226,7 @@ func TestNewInformer(t *testing.T) {
 					t.Fail()
 				}
 			})
-		dbClient.EXPECT().Prepare(gomock.Any()).Return(stmt).AnyTimes()
+		dbClient.EXPECT().Prepare(gomock.Any()).DoAndReturn(toVirtualStmt).AnyTimes()
 
 		// NewIndexer() logic (within NewListOptionIndexer(). This test is only concerned with whether it returns err or not as NewIndexer
 		// is tested in depth in its own indexer_test.go
@@ -376,6 +372,10 @@ func TestUnsafeSet(t *testing.T) {
 
 	// will panic if SharedIndexInformer stops having a *Indexer field called "indexer"
 	UnsafeSet(sii, "indexer", &Indexer{})
+}
+
+func toVirtualStmt(s string) db.VirtualStmt {
+	return db.VirtualStmt(s)
 }
 
 type dummyWatch struct{}

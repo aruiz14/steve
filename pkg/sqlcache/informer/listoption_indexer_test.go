@@ -115,7 +115,6 @@ func TestNewListOptionIndexer(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		txClient := NewMockTxClient(ctrl)
 		store := NewMockStore(ctrl)
-		stmt := NewMockStmt(ctrl)
 		fields := [][]string{{"something"}}
 		id := "somename"
 		// logic for NewIndexer(), only interested in if this results in error or not
@@ -131,7 +130,7 @@ func TestNewListOptionIndexer(t *testing.T) {
 			})
 		store.EXPECT().RegisterAfterAdd(gomock.Any())
 		store.EXPECT().RegisterAfterUpdate(gomock.Any())
-		store.EXPECT().Prepare(gomock.Any()).Return(stmt).AnyTimes()
+		store.EXPECT().Prepare(gomock.Any()).DoAndReturn(toVirtualStmt).AnyTimes()
 		// end NewIndexer() logic
 
 		store.EXPECT().RegisterAfterAdd(gomock.Any()).Times(3)
@@ -195,7 +194,6 @@ func TestNewListOptionIndexer(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		txClient := NewMockTxClient(ctrl)
 		store := NewMockStore(ctrl)
-		stmt := NewMockStmt(ctrl)
 		fields := [][]string{{"something"}}
 		id := "somename"
 		// logic for NewIndexer(), only interested in if this results in error or not
@@ -211,7 +209,7 @@ func TestNewListOptionIndexer(t *testing.T) {
 			})
 		store.EXPECT().RegisterAfterAdd(gomock.Any())
 		store.EXPECT().RegisterAfterUpdate(gomock.Any())
-		store.EXPECT().Prepare(gomock.Any()).Return(stmt).AnyTimes()
+		store.EXPECT().Prepare(gomock.Any()).DoAndReturn(toVirtualStmt).AnyTimes()
 		// end NewIndexer() logic
 
 		store.EXPECT().RegisterAfterAdd(gomock.Any()).Times(3)
@@ -232,7 +230,6 @@ func TestNewListOptionIndexer(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		txClient := NewMockTxClient(ctrl)
 		store := NewMockStore(ctrl)
-		stmt := NewMockStmt(ctrl)
 		fields := [][]string{{"something"}}
 		id := "somename"
 		// logic for NewIndexer(), only interested in if this results in error or not
@@ -248,7 +245,7 @@ func TestNewListOptionIndexer(t *testing.T) {
 			})
 		store.EXPECT().RegisterAfterAdd(gomock.Any())
 		store.EXPECT().RegisterAfterUpdate(gomock.Any())
-		store.EXPECT().Prepare(gomock.Any()).Return(stmt).AnyTimes()
+		store.EXPECT().Prepare(gomock.Any()).DoAndReturn(toVirtualStmt).AnyTimes()
 		// end NewIndexer() logic
 
 		store.EXPECT().RegisterAfterAdd(gomock.Any()).Times(3)
@@ -279,7 +276,6 @@ func TestNewListOptionIndexer(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		txClient := NewMockTxClient(ctrl)
 		store := NewMockStore(ctrl)
-		stmt := NewMockStmt(ctrl)
 		fields := [][]string{{"something"}}
 		id := "somename"
 		// logic for NewIndexer(), only interested in if this results in error or not
@@ -295,7 +291,7 @@ func TestNewListOptionIndexer(t *testing.T) {
 			})
 		store.EXPECT().RegisterAfterAdd(gomock.Any())
 		store.EXPECT().RegisterAfterUpdate(gomock.Any())
-		store.EXPECT().Prepare(gomock.Any()).Return(stmt).AnyTimes()
+		store.EXPECT().Prepare(gomock.Any()).DoAndReturn(toVirtualStmt).AnyTimes()
 		// end NewIndexer() logic
 
 		store.EXPECT().RegisterAfterAdd(gomock.Any()).Times(3)
@@ -330,7 +326,6 @@ func TestNewListOptionIndexer(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		txClient := NewMockTxClient(ctrl)
 		store := NewMockStore(ctrl)
-		stmt := NewMockStmt(ctrl)
 		fields := [][]string{{"something"}}
 		id := "somename"
 		// logic for NewIndexer(), only interested in if this results in error or not
@@ -346,7 +341,7 @@ func TestNewListOptionIndexer(t *testing.T) {
 			})
 		store.EXPECT().RegisterAfterAdd(gomock.Any())
 		store.EXPECT().RegisterAfterUpdate(gomock.Any())
-		store.EXPECT().Prepare(gomock.Any()).Return(stmt).AnyTimes()
+		store.EXPECT().Prepare(gomock.Any()).DoAndReturn(toVirtualStmt).AnyTimes()
 		// end NewIndexer() logic
 
 		store.EXPECT().RegisterAfterAdd(gomock.Any()).Times(3)
@@ -3122,7 +3117,7 @@ func TestConstructQuery(t *testing.T) {
 		expectedStmt: `SELECT o.object, o.objectnonce, o.dekid FROM "something" o
   JOIN "something_fields" f ON o.key = f.key
   WHERE
-    (extractBarredValue(f."spec.containers.image", "3") = ?) AND
+    (extractBarredValue(f."spec.containers.image", '3') = ?) AND
     (FALSE)
   ORDER BY f."metadata.name" ASC `,
 		expectedStmtArgs: []any{"nginx-happy"},
@@ -3146,7 +3141,7 @@ func TestConstructQuery(t *testing.T) {
   JOIN "something_fields" f ON o.key = f.key
   WHERE
     (FALSE)
-  ORDER BY extractBarredValue(f."spec.containers.image", "16") ASC`,
+  ORDER BY extractBarredValue(f."spec.containers.image", '16') ASC`,
 		expectedStmtArgs: []any{},
 		expectedErr:      nil,
 	})
@@ -3178,9 +3173,9 @@ func TestConstructQuery(t *testing.T) {
 		expectedStmt: `SELECT o.object, o.objectnonce, o.dekid FROM "something" o
   JOIN "something_fields" f ON o.key = f.key
   WHERE
-    (extractBarredValue(f."spec.containers.image", "3") = ?) AND
+    (extractBarredValue(f."spec.containers.image", '3') = ?) AND
     (FALSE)
-  ORDER BY extractBarredValue(f."spec.containers.image", "16") ASC`,
+  ORDER BY extractBarredValue(f."spec.containers.image", '16') ASC`,
 		expectedStmtArgs: []any{"nginx-happy"},
 		expectedErr:      nil,
 	})

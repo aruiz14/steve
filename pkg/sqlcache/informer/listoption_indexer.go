@@ -1031,7 +1031,7 @@ func (l *ListOptionIndexer) getValidFieldEntry(prefix string, fields []string) (
 		// We have an index, but not onto a valid field
 		return "", err
 	}
-	return fmt.Sprintf(`extractBarredValue(%s."%s", "%s")`, prefix, leadingColumnName, indexField), nil
+	return fmt.Sprintf(`extractBarredValue(%s."%s", '%s')`, prefix, leadingColumnName, indexField), nil
 }
 
 // buildORClause creates an SQLite compatible query that ORs conditions built from passed filters

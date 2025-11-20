@@ -20,7 +20,7 @@ import (
 )
 
 //go:generate mockgen --build_flags=--mod=mod -package informer -destination ./sql_mocks_test.go github.com/rancher/steve/pkg/sqlcache/informer Store
-//go:generate mockgen --build_flags=--mod=mod -package informer -destination ./db_mocks_test.go github.com/rancher/steve/pkg/sqlcache/db Rows,Client,Stmt,TxClient
+//go:generate mockgen --build_flags=--mod=mod -package informer -destination ./db_mocks_test.go github.com/rancher/steve/pkg/sqlcache/db Rows,Client,TxClient
 
 type testStoreObject struct {
 	Id  string
@@ -161,7 +161,7 @@ func TestAfterUpsert(t *testing.T) {
 		indexer := &Indexer{
 			ctx:               context.Background(),
 			Store:             store,
-			deleteIndicesStmt: NewMockStmt(ctrl),
+			deleteIndicesStmt: db.VirtualStmt("deleteIndicesStmt"),
 			indexers: map[string]cache.IndexFunc{
 				"a": func(obj interface{}) ([]string, error) {
 					return []string{objKey}, nil
@@ -188,7 +188,7 @@ func TestAfterUpsert(t *testing.T) {
 		indexer := &Indexer{
 			ctx:               context.Background(),
 			Store:             store,
-			deleteIndicesStmt: NewMockStmt(ctrl),
+			deleteIndicesStmt: db.VirtualStmt("deleteIndicesStmt"),
 
 			indexers: map[string]cache.IndexFunc{
 				"a": func(obj interface{}) ([]string, error) {
@@ -211,7 +211,7 @@ func TestAfterUpsert(t *testing.T) {
 		indexer := &Indexer{
 			ctx:               context.Background(),
 			Store:             store,
-			deleteIndicesStmt: NewMockStmt(ctrl),
+			deleteIndicesStmt: db.VirtualStmt("deleteIndicesStmt"),
 			indexers: map[string]cache.IndexFunc{
 				"a": func(obj interface{}) ([]string, error) {
 					return []string{objKey}, nil
@@ -252,7 +252,7 @@ func TestIndex(t *testing.T) {
 		indexer := &Indexer{
 			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: NewMockStmt(ctrl),
+			listByIndexStmt: db.VirtualStmt("listByIndexStmt"),
 			indexers: map[string]cache.IndexFunc{
 				indexName: func(obj interface{}) ([]string, error) {
 					return []string{objKey}, nil
@@ -280,7 +280,7 @@ func TestIndex(t *testing.T) {
 		indexer := &Indexer{
 			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: NewMockStmt(ctrl),
+			listByIndexStmt: db.VirtualStmt("listByIndexStmt"),
 			indexers: map[string]cache.IndexFunc{
 				indexName: func(obj interface{}) ([]string, error) {
 					return []string{objKey}, nil
@@ -308,7 +308,7 @@ func TestIndex(t *testing.T) {
 		indexer := &Indexer{
 			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: NewMockStmt(ctrl),
+			listByIndexStmt: db.VirtualStmt("listByIndexStmt"),
 			indexers: map[string]cache.IndexFunc{
 				indexName: func(obj interface{}) ([]string, error) {
 					return []string{objKey}, nil
@@ -354,7 +354,7 @@ func TestIndex(t *testing.T) {
 		indexer := &Indexer{
 			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: NewMockStmt(ctrl),
+			listByIndexStmt: db.VirtualStmt("listByIndexStmt"),
 			indexers: map[string]cache.IndexFunc{
 				indexName: func(obj interface{}) ([]string, error) {
 					return []string{objKey}, nil
@@ -379,7 +379,7 @@ func TestIndex(t *testing.T) {
 		indexer := &Indexer{
 			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: NewMockStmt(ctrl),
+			listByIndexStmt: db.VirtualStmt("listByIndexStmt"),
 			indexers: map[string]cache.IndexFunc{
 				indexName: func(obj interface{}) ([]string, error) {
 					return []string{objKey}, nil
@@ -449,7 +449,7 @@ func TestByIndex(t *testing.T) {
 		indexer := &Indexer{
 			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: NewMockStmt(ctrl),
+			listByIndexStmt: db.VirtualStmt("listByIndexStmt"),
 		}
 		testObject := testStoreObject{Id: "something", Val: "a"}
 
@@ -472,7 +472,7 @@ func TestByIndex(t *testing.T) {
 		indexer := &Indexer{
 			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: NewMockStmt(ctrl),
+			listByIndexStmt: db.VirtualStmt("listByIndexStmt"),
 		}
 		testObject := testStoreObject{Id: "something", Val: "a"}
 
@@ -495,7 +495,7 @@ func TestByIndex(t *testing.T) {
 		indexer := &Indexer{
 			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: NewMockStmt(ctrl),
+			listByIndexStmt: db.VirtualStmt("listByIndexStmt"),
 		}
 		testObject := testStoreObject{Id: "something", Val: "a"}
 
@@ -517,7 +517,7 @@ func TestByIndex(t *testing.T) {
 		indexer := &Indexer{
 			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: NewMockStmt(ctrl),
+			listByIndexStmt: db.VirtualStmt("listByIndexStmt"),
 		}
 
 		store.EXPECT().ReadOnlyTransaction(ctx, gomock.Any()).DoAndReturn(runTransaction(client))
@@ -536,7 +536,7 @@ func TestByIndex(t *testing.T) {
 		indexer := &Indexer{
 			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: NewMockStmt(ctrl),
+			listByIndexStmt: db.VirtualStmt("listByIndexStmt"),
 		}
 		testObject := testStoreObject{Id: "something", Val: "a"}
 
@@ -571,7 +571,7 @@ func TestListIndexFuncValues(t *testing.T) {
 		indexer := &Indexer{
 			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: NewMockStmt(ctrl),
+			listByIndexStmt: db.VirtualStmt("listByIndexStmt"),
 		}
 
 		store.EXPECT().ReadOnlyTransaction(ctx, gomock.Any()).DoAndReturn(runTransaction(client))
@@ -589,7 +589,7 @@ func TestListIndexFuncValues(t *testing.T) {
 		indexer := &Indexer{
 			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: NewMockStmt(ctrl),
+			listByIndexStmt: db.VirtualStmt("listByIndexStmt"),
 		}
 		store.EXPECT().ReadOnlyTransaction(ctx, gomock.Any()).DoAndReturn(runTransaction(client))
 		client.EXPECT().QueryStmt(indexer.listByIndexStmt, indexName).Return(nil, fmt.Errorf("error"))
@@ -605,7 +605,7 @@ func TestListIndexFuncValues(t *testing.T) {
 		indexer := &Indexer{
 			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: NewMockStmt(ctrl),
+			listByIndexStmt: db.VirtualStmt("listByIndexStmt"),
 		}
 		store.EXPECT().ReadOnlyTransaction(ctx, gomock.Any()).DoAndReturn(runTransaction(client))
 		client.EXPECT().QueryStmt(indexer.listByIndexStmt, indexName).Return(rows, nil)

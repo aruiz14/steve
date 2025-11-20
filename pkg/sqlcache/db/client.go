@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"database/sql/driver"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -19,16 +18,14 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 
 	"github.com/rancher/steve/pkg/sqlcache/db/logging"
-
 	"github.com/sirupsen/logrus"
-	"modernc.org/sqlite"
-
-	// needed for drivers
-	_ "modernc.org/sqlite"
+	"zombiezen.com/go/sqlite"
+	"zombiezen.com/go/sqlite/sqlitex"
 )
 
 const (
@@ -57,76 +54,19 @@ type Client interface {
 	ReadOnlyTransaction(ctx context.Context, f WithTransactionFunction) error
 }
 
-// withTransaction runs f within a transaction.
-//
-// If forWriting is true, this method blocks until all other concurrent forWriting
-// transactions have either committed or rolled back.
-// If forWriting is false, it is assumed the returned transaction will exclusively
-// be used for DQL (e.g. SELECT) queries.
-// Not respecting the above rule might result in transactions failing with unexpected
-// SQLITE_BUSY (5) errors (aka "Runtime error: database is locked").
-// See discussion in https://github.com/rancher/lasso/pull/98 for details
-//
-// The transaction is committed if f returns nil, otherwise it is rolled back.
-func (c *client) withTransaction(ctx context.Context, forWriting bool, f WithTransactionFunction) error {
-	// note: this assumes _txlock=immediate in the connection string, see openDatabase
-	tx, err := c.conn.BeginTx(ctx, &sql.TxOptions{
-		ReadOnly: !forWriting,
-	})
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-
-	if err = f(NewTxClient(tx, WithQueryLogger(c.queryLogger))); err != nil {
-		rerr := c.rollback(ctx, tx)
-		return errors.Join(err, rerr)
-	}
-
-	err = c.commit(ctx, tx)
-	if err != nil {
-		// When the context.Context given to BeginTx is canceled, then the
-		// Tx is rolled back already, so rolling back again could have failed.
-		return err
-	}
-	return nil
-}
-
-func (c *client) commit(ctx context.Context, tx *sql.Tx) error {
-	err := tx.Commit()
-	if errors.Is(err, sql.ErrTxDone) && ctx.Err() == context.Canceled {
-		return fmt.Errorf("commit failed due to canceled context")
-	}
-	return err
-}
-
-func (c *client) rollback(ctx context.Context, tx *sql.Tx) error {
-	err := tx.Rollback()
-	if errors.Is(err, sql.ErrTxDone) && ctx.Err() == context.Canceled {
-		return fmt.Errorf("rollback failed due to canceled context")
-	}
-	return err
-}
-
 // WithTransactionFunction is a function that uses a transaction
 type WithTransactionFunction func(tx TxClient) error
 
 // client is the main implementation of Client. Other implementations exist for test purposes
 type client struct {
-	conn      Connection
 	encryptor Encryptor
 	decryptor Decryptor
 	encoding  encoding
 	dbDir     string
 
-	queryLogger logging.QueryLogger
-}
+	writePool, readPool *sqlitex.Pool
 
-// Connection represents a connection pool.
-type Connection interface {
-	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
-	Exec(query string, args ...any) (sql.Result, error)
-	Prepare(query string) (*sql.Stmt, error)
-	Close() error
+	queryLogger logging.QueryLogger
 }
 
 // QueryError encapsulates an error while executing a query
@@ -189,22 +129,20 @@ func NewClient(ctx context.Context, encryptor Encryptor, decryptor Decryptor, op
 }
 
 func (c *client) Close() error {
-	if c.conn == nil {
-		return nil
+	var errs []error
+	if err := c.readPool.Close(); err != nil {
+		errs = append(errs, err)
 	}
-	return c.conn.Close()
+	if err := c.writePool.Close(); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
 }
 
 // Prepare prepares the given string into a sql statement on the client's connection.
 func (c *client) Prepare(queryString string) VirtualStmt {
-	prepared, err := c.conn.Prepare(queryString)
-	if err != nil {
-		panic(fmt.Errorf("Error preparing statement: %s\n%w", queryString, err))
-	}
-	return &stmt{
-		Stmt:        prepared,
-		queryString: queryString,
-	}
+	// TODO: how to validate? pre-register (at least write queries)?
+	return VirtualStmt(queryString)
 }
 
 // ReadObjects Scans the given rows, performs any necessary decryption, converts the data to objects of the given type,
@@ -414,122 +352,168 @@ func (c *client) openDatabase(dbDir string) error {
 	if err != nil {
 		return fmt.Errorf("preparing database directory: %w", err)
 	}
-	if err := touchFile(dbPath, informerObjectCachePerms); err != nil {
-		return nil
-	}
 	c.dbDir = dbDir
 
-	sqlDB, err := sql.Open("sqlite", "file:"+dbPath+"?"+
+	prepareConnection := func(conn *sqlite.Conn) error {
+		if err := configurePragmas(conn); err != nil {
+			return err
+		}
+		return registerCustomFunctions(conn)
+	}
+	writePool, err := sqlitex.NewPool(dbPath, sqlitex.PoolOptions{
 		// open SQLite file in read-write mode, creating it if it does not exist
-		"mode=rwc&"+
-		// use the WAL journal mode for consistency and efficiency
-		"_pragma=journal_mode=wal&"+
-		// do not even attempt to attain durability. Database is thrown away at pod restart
-		"_pragma=synchronous=off&"+
-		// do check foreign keys and honor ON DELETE CASCADE
-		"_pragma=foreign_keys=on&"+
-		// if two transactions want to write at the same time, allow 2 minutes for the first to complete
-		// before baling out
-		"_pragma=busy_timeout=120000&"+
-		// store temporary tables to memory, to speed up queries making use
-		// of temporary tables (eg: when using DISTINCT)
-		"_pragma=temp_store=2&"+
-		// default to IMMEDIATE mode for transactions. Setting this parameter is the only current way
-		// to be able to switch between DEFERRED and IMMEDIATE modes in modernc.org/sqlite's implementation
-		// of BeginTx
-		"_txlock=immediate")
+		Flags:       sqlite.OpenReadWrite | sqlite.OpenWAL,
+		PoolSize:    1,
+		PrepareConn: prepareConnection,
+	})
 	if err != nil {
 		return err
 	}
-	sqlite.RegisterDeterministicScalarFunction("extractBarredValue", 2, extractBarredValue)
-	sqlite.RegisterDeterministicScalarFunction("inet_aton", 1, inetAtoN)
-	sqlite.RegisterDeterministicScalarFunction("memoryInBytes", 1, memoryInBytes)
-	c.conn = sqlDB
+	readPool, err := sqlitex.NewPool(dbPath, sqlitex.PoolOptions{
+		Flags:       sqlite.OpenReadOnly,
+		PoolSize:    runtime.GOMAXPROCS(0) * 2,
+		PrepareConn: prepareConnection,
+	})
+	if err != nil {
+		writePool.Close()
+		return err
+	}
+	// TODO(alejandro): look into different pool implementations (e.g. dynamic)
+	c.writePool = writePool
+	c.readPool = readPool
+
 	return nil
 }
 
-func extractBarredValue(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+func configurePragmas(conn *sqlite.Conn) error {
+	for _, pragma := range []string{
+		// use the WAL journal mode for consistency and efficiency
+		"journal_mode=wal",
+		// do not even attempt to attain durability. Database is thrown away at pod restart
+		"synchronous=off",
+		// do check foreign keys and honor ON DELETE CASCADE
+		"foreign_keys=on",
+		// if two transactions want to write at the same time, allow 2 minutes for the first to complete
+		// before baling out
+		"busy_timeout=20000",
+		// store temporary tables to memory, to speed up queries making use
+		// of temporary tables (eg: when using DISTINCT)
+		"temp_store=2",
+	} {
+		if err := sqlitex.ExecuteTransient(conn, "PRAGMA "+pragma, nil); err != nil {
+			return fmt.Errorf("configuring database with pragma %q: %w", pragma, err)
+		}
+	}
+	return nil
+}
+
+func registerCustomFunctions(conn *sqlite.Conn) error {
+	if err := conn.CreateFunction("extractBarredValue", &sqlite.FunctionImpl{
+		NArgs:         2,
+		Scalar:        extractBarredValue,
+		Deterministic: true,
+	}); err != nil {
+		return err
+	}
+	if err := conn.CreateFunction("inet_aton", &sqlite.FunctionImpl{
+		NArgs:         1,
+		Scalar:        inetAtoN,
+		Deterministic: true,
+	}); err != nil {
+		return err
+	}
+	if err := conn.CreateFunction("memoryInBytes", &sqlite.FunctionImpl{
+		NArgs:         1,
+		Scalar:        memoryInBytes,
+		Deterministic: true,
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func extractBarredValue(_ sqlite.Context, args []sqlite.Value) (sqlite.Value, error) {
 	var arg1 string
 	var arg2 int
-	switch argTyped := args[0].(type) {
-	case string:
-		arg1 = argTyped
-	case []byte:
-		arg1 = string(argTyped)
+	switch args[0].Type() {
+	case sqlite.TypeText:
+		arg1 = args[0].Text()
+	case sqlite.TypeBlob:
+		arg1 = string(args[0].Blob())
 	default:
-		return nil, fmt.Errorf("unsupported type for arg1: expected a string, got :%T", args[0])
+		return sqlite.Unchanged(), fmt.Errorf("unsupported type for arg1: expected a string, got :%T", args[0])
 	}
 	var err error
-	switch argTyped := args[1].(type) {
-	case int:
-		arg2 = argTyped
-	case string:
-		arg2, err = strconv.Atoi(argTyped)
-	case []byte:
-		arg2, err = strconv.Atoi(string(argTyped))
+	switch args[1].Type() {
+	case sqlite.TypeInteger:
+		arg2 = args[1].Int()
+	case sqlite.TypeFloat:
+		arg2 = int(args[1].Float())
+	case sqlite.TypeText:
+		arg2, err = strconv.Atoi(args[1].Text())
+	case sqlite.TypeBlob:
+		arg2, err = strconv.Atoi(string(args[1].Blob()))
 	default:
-		return nil, fmt.Errorf("unsupported type for arg2: expected an int, got: %T", args[0])
+		return sqlite.Unchanged(), fmt.Errorf("unsupported type for arg2: expected an int, got: %T", args[0])
 	}
 	if err != nil {
-		return nil, fmt.Errorf("problem with arg2: %w", err)
+		return sqlite.Unchanged(), fmt.Errorf("problem with arg2: %w", err)
 	}
 	parts := strings.Split(arg1, "|")
 	if arg2 >= len(parts) || arg2 < 0 {
-		return "", nil
+		return sqlite.Unchanged(), nil
 	}
-	return parts[arg2], nil
+	return sqlite.TextValue(parts[arg2]), nil
 }
 
-func inetAtoN(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+func inetAtoN(_ sqlite.Context, args []sqlite.Value) (sqlite.Value, error) {
 	var arg1 string
-	switch argTyped := args[0].(type) {
-	case string:
-		arg1 = argTyped
-	case []byte:
-		arg1 = string(argTyped)
+	switch args[0].Type() {
+	case sqlite.TypeText:
+		arg1 = args[0].Text()
+	case sqlite.TypeBlob:
+		arg1 = string(args[0].Blob())
 	default:
 		logrus.Errorf("inetAtoN: unsupported type for arg1: expected a string, got :%T", args[0])
-		return int64(0), nil
+		return sqlite.IntegerValue(0), nil
 	}
 	ip := net.ParseIP(arg1)
 	if ip == nil {
 		logrus.Errorf("inetAtoN: invalid IP address: %s", arg1)
-		return int64(0), nil
+		return sqlite.IntegerValue(0), nil
 	}
 	ipAs4 := ip.To4()
 	if ipAs4 != nil {
-		return int64(binary.BigEndian.Uint32(ipAs4)), nil
+		return sqlite.IntegerValue(int64(binary.BigEndian.Uint32(ipAs4))), nil
 	}
 	// By elimination it must be IPv6 (until IPv[n > 6] comes along one day
 	ipAs16 := ip.To16()
 	if ipAs16 == nil {
 		logrus.Errorf("inetAtoN: invalid IPv6 address: %s", arg1)
-		return int64(0), nil
+		return sqlite.IntegerValue(0), nil
 	}
-	return int64(binary.BigEndian.Uint64(ipAs16)), nil
+	return sqlite.IntegerValue(int64(binary.BigEndian.Uint64(ipAs16))), nil
 }
 
 // Convert a string representation of memory to a float giving the number of bytes
 // See the `tbl` var for associated values of each suffix
 // Values returned as REAL to allow for large values
-func memoryInBytes(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+func memoryInBytes(_ sqlite.Context, args []sqlite.Value) (sqlite.Value, error) {
 	var arg1 string
-	var val float64
-	var finalValue driver.Value
-	finalValue = val
-	switch argTyped := args[0].(type) {
-	case string:
-		arg1 = argTyped
-	case []byte:
-		arg1 = string(argTyped)
+	switch args[0].Type() {
+	case sqlite.TypeText:
+		arg1 = args[0].Text()
+	case sqlite.TypeBlob:
+		arg1 = string(args[0].Blob())
 	default:
-		return finalValue, fmt.Errorf("unsupported type for arg1: expected a string, got :%T", args[0])
+		return sqlite.FloatValue(0), fmt.Errorf("unsupported type for arg1: expected a string, got :%T", args[0])
 	}
 	rx := `^([0-9]+)(\w{0,2})$`
 	ptn := regexp.MustCompile(rx)
 	m := ptn.FindStringSubmatch(arg1)
 	if m == nil || len(m) != 3 {
-		return finalValue, fmt.Errorf("couldn't parse '%s' as a numeric value", arg1)
+		return sqlite.FloatValue(0), fmt.Errorf("couldn't parse '%s' as a numeric value", arg1)
 	}
 	tbl := map[string]int{
 		"B": 0,
@@ -541,11 +525,10 @@ func memoryInBytes(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Val
 	}
 	size, err := strconv.Atoi(m[1])
 	if err != nil {
-		return finalValue, fmt.Errorf("couldn't parse '%s' as a numeric value: %w", arg1, err)
+		return sqlite.FloatValue(0), fmt.Errorf("couldn't parse '%s' as a numeric value: %w", arg1, err)
 	}
 	factor := 0
 	base := 1024
-	var finalError error
 	if len(m[2]) > 0 {
 		var ok bool
 		factor, ok = tbl[strings.ToUpper(m[2][0:1])]
@@ -553,18 +536,17 @@ func memoryInBytes(ctx *sqlite.FunctionContext, args []driver.Value) (driver.Val
 			factor = 0
 		}
 		if len(m[2]) > 2 {
-			finalError = fmt.Errorf("numeric value '%s' has an unrecognized suffix '%s'", arg1, m[2])
+			err = fmt.Errorf("numeric value '%s' has an unrecognized suffix '%s'", arg1, m[2])
 		} else if len(m[2]) == 2 {
 			if strings.ToUpper(m[2][1:2]) == "I" {
 				base = 1000
 			} else {
-				finalError = fmt.Errorf("numeric value '%s' has an unrecognized suffix '%s'", arg1, m[2])
+				err = fmt.Errorf("numeric value '%s' has an unrecognized suffix '%s'", arg1, m[2])
 			}
 		}
 	}
-	val = float64(size) * math.Pow(float64(base), float64(factor))
-	finalValue = val
-	return finalValue, finalError
+	value := float64(size) * math.Pow(float64(base), float64(factor))
+	return sqlite.FloatValue(value), err
 }
 
 // This acts like "touch" for both existing files and non-existing files.

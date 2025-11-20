@@ -7,7 +7,7 @@ Adapted from client-go, Copyright 2014 The Kubernetes Authors.
 package store
 
 // Mocks for this test are generated with the following command.
-//go:generate mockgen --build_flags=--mod=mod -package store -destination ./db_mocks_test.go github.com/rancher/steve/pkg/sqlcache/db Rows,Client,TxClient,Stmt
+//go:generate mockgen --build_flags=--mod=mod -package store -destination ./db_mocks_test.go github.com/rancher/steve/pkg/sqlcache/db Rows,Client,TxClient
 
 import (
 	"context"
@@ -963,13 +963,13 @@ func SetupMockDB(ctrl *gomock.Controller) (*MockClient, *MockTxClient) {
 	dbC.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(nil).Do(runTransactionAssertNoError(ctrl.T, txC))
 
 	// use stmt mock here
-	dbC.EXPECT().Prepare(fmt.Sprintf(upsertStmtFmt, "testStoreObject")).Return(NewMockStmt(ctrl))
-	dbC.EXPECT().Prepare(fmt.Sprintf(deleteStmtFmt, "testStoreObject")).Return(NewMockStmt(ctrl))
-	dbC.EXPECT().Prepare(fmt.Sprintf(deleteAllStmtFmt, "testStoreObject")).Return(NewMockStmt(ctrl))
-	dbC.EXPECT().Prepare(fmt.Sprintf(dropBaseStmtFmt, "testStoreObject")).Return(NewMockStmt(ctrl))
-	dbC.EXPECT().Prepare(fmt.Sprintf(getStmtFmt, "testStoreObject")).Return(NewMockStmt(ctrl))
-	dbC.EXPECT().Prepare(fmt.Sprintf(listStmtFmt, "testStoreObject")).Return(NewMockStmt(ctrl))
-	dbC.EXPECT().Prepare(fmt.Sprintf(listKeysStmtFmt, "testStoreObject")).Return(NewMockStmt(ctrl))
+	dbC.EXPECT().Prepare(fmt.Sprintf(upsertStmtFmt, "testStoreObject")).DoAndReturn(toVirtualStmt)
+	dbC.EXPECT().Prepare(fmt.Sprintf(deleteStmtFmt, "testStoreObject")).DoAndReturn(toVirtualStmt)
+	dbC.EXPECT().Prepare(fmt.Sprintf(deleteAllStmtFmt, "testStoreObject")).DoAndReturn(toVirtualStmt)
+	dbC.EXPECT().Prepare(fmt.Sprintf(dropBaseStmtFmt, "testStoreObject")).DoAndReturn(toVirtualStmt)
+	dbC.EXPECT().Prepare(fmt.Sprintf(getStmtFmt, "testStoreObject")).DoAndReturn(toVirtualStmt)
+	dbC.EXPECT().Prepare(fmt.Sprintf(listStmtFmt, "testStoreObject")).DoAndReturn(toVirtualStmt)
+	dbC.EXPECT().Prepare(fmt.Sprintf(listKeysStmtFmt, "testStoreObject")).DoAndReturn(toVirtualStmt)
 
 	return dbC, txC
 }
@@ -1046,4 +1046,8 @@ func runTransactionAndAssertError(t gomock.TestReporter, client db.TxClient) fun
 			t.Errorf("expected error running transaction, got %v", err)
 		}
 	}
+}
+
+func toVirtualStmt(s string) db.VirtualStmt {
+	return db.VirtualStmt(s)
 }
