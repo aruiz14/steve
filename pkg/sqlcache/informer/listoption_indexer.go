@@ -2,7 +2,6 @@ package informer
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"maps"
@@ -328,23 +327,25 @@ func (l *ListOptionIndexer) Watch(ctx context.Context, opts WatchOptions, events
 	}
 
 	if err := l.WithTransaction(ctx, false, func(tx db.TxClient) error {
-		rowIDRow := tx.Stmt(l.findEventsRowByRVStmt).QueryRowContext(ctx, targetRV)
-		if err := rowIDRow.Err(); err != nil {
+		rows, err := tx.Stmt(l.findEventsRowByRVStmt).QueryContext(ctx, targetRV)
+		if err != nil {
 			return err
 		}
+		defer rows.Close()
 
 		var rowID int
-		err := rowIDRow.Scan(&rowID)
-		if errors.Is(err, sql.ErrNoRows) {
+		if !rows.Next() {
 			if targetRV != latestRV {
 				return ErrTooOld
 			}
-		} else if err != nil {
-			return fmt.Errorf("failed scan rowid: %w", err)
+		} else {
+			if err := rows.Scan(&rowID); err != nil {
+				return fmt.Errorf("failed scan rowid: %w", err)
+			}
 		}
 
 		// Backfilling previous events from resourceVersion
-		rows, err := tx.Stmt(l.listEventsAfterStmt).QueryContext(ctx, rowID)
+		rows, err = tx.Stmt(l.listEventsAfterStmt).QueryContext(ctx, rowID)
 		if err != nil {
 			return err
 		}
