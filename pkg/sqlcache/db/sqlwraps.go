@@ -20,7 +20,6 @@ type Rows interface {
 // rationale: allow mocking
 type Stmt interface {
 	Exec(args ...any) (sql.Result, error)
-	Query(args ...any) (*sql.Rows, error)
 	QueryContext(ctx context.Context, args ...any) (Rows, error)
 	Close() error
 
