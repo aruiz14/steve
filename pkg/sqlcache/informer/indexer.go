@@ -194,7 +194,7 @@ func (i *Indexer) Index(indexName string, obj any) (result []any, err error) {
 		params = append(params, value)
 	}
 
-	rows, err := i.QueryForRows(i.ctx, stmt, params...)
+	rows, err := stmt.QueryContext(i.ctx, params...)
 	if err != nil {
 		return nil, err
 	}
@@ -209,7 +209,7 @@ func (i *Indexer) dropIndices(tx db.TxClient) error {
 // ByIndex returns the stored objects whose set of indexed values
 // for the named index includes the given indexed value
 func (i *Indexer) ByIndex(indexName, indexedValue string) ([]any, error) {
-	rows, err := i.QueryForRows(i.ctx, i.listByIndexStmt, indexName, indexedValue)
+	rows, err := i.listByIndexStmt.QueryContext(i.ctx, indexName, indexedValue)
 	if err != nil {
 		return nil, err
 	}
@@ -225,7 +225,7 @@ func (i *Indexer) IndexKeys(indexName, indexedValue string) ([]string, error) {
 		return nil, fmt.Errorf("Index with name %s does not exist", indexName)
 	}
 
-	rows, err := i.QueryForRows(i.ctx, i.listKeysByIndexStmt, indexName, indexedValue)
+	rows, err := i.listKeysByIndexStmt.QueryContext(i.ctx, indexName, indexedValue)
 	if err != nil {
 		return nil, err
 	}
@@ -243,7 +243,7 @@ func (i *Indexer) ListIndexFuncValues(name string) []string {
 
 // safeListIndexFuncValues returns all the indexed values of the given index
 func (i *Indexer) safeListIndexFuncValues(indexName string) ([]string, error) {
-	rows, err := i.QueryForRows(i.ctx, i.listIndexValuesStmt, indexName)
+	rows, err := i.listIndexValuesStmt.QueryContext(i.ctx, indexName)
 	if err != nil {
 		return nil, err
 	}

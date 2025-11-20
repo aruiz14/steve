@@ -168,7 +168,7 @@ func (s *Store) updateExternalInfo(tx db.TxClient, key string, externalUpdateInf
 			return err
 		}
 		defer getStmt.Close()
-		rows, err := s.QueryForRows(s.ctx, getStmt, labelDep.SourceLabelName)
+		rows, err := getStmt.QueryContext(s.ctx, labelDep.SourceLabelName)
 		if err != nil {
 			if !isDBError(err) {
 				logrus.Infof("Error getting external info for table %s, key %s: %v", labelDep.TargetGVK, key, err)
@@ -224,7 +224,7 @@ func (s *Store) updateExternalInfo(tx db.TxClient, key string, externalUpdateInf
 			continue
 		}
 		defer getStmt.Close()
-		rows, err := s.QueryForRows(s.ctx, getStmt)
+		rows, err := getStmt.QueryContext(s.ctx)
 		if err != nil {
 			if !isDBError(err) {
 				logrus.Infof("Error getting external info for table %s, key %s: %v", nonLabelDep.TargetGVK, key, err)
@@ -279,7 +279,7 @@ func (s *Store) overrideCheck(tx db.TxClient, finalFieldName, sourceGVK, sourceK
 		return false, err
 	}
 	defer getValueStmt.Close()
-	rows, err := s.QueryForRows(s.ctx, getValueStmt, sourceKey)
+	rows, err := getValueStmt.QueryContext(s.ctx, sourceKey)
 	if err != nil {
 		logrus.Debugf("Checking the field, got error %s", err)
 		return false, err
@@ -317,7 +317,7 @@ func (s *Store) deleteByKey(key string, obj any) error {
 
 // GetByKey returns the object associated with the given object's key
 func (s *Store) GetByKey(key string) (item any, exists bool, err error) {
-	rows, err := s.QueryForRows(s.ctx, s.getStmt, key)
+	rows, err := s.getStmt.QueryContext(s.ctx, key)
 	if err != nil {
 		return nil, false, err
 	}
@@ -404,7 +404,7 @@ func (s *Store) Delete(obj any) error {
 // List returns a list of all the currently known objects
 // Note: I/O errors will panic this function, as the interface signature does not allow returning errors
 func (s *Store) List() []any {
-	rows, err := s.QueryForRows(s.ctx, s.listStmt)
+	rows, err := s.listStmt.QueryContext(s.ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -419,7 +419,7 @@ func (s *Store) List() []any {
 // Note: Atm it doesn't appear returning nil in the case of an error has any detrimental effects. An error is not
 // uncommon enough nor does it appear to necessitate a panic.
 func (s *Store) ListKeys() []string {
-	rows, err := s.QueryForRows(s.ctx, s.listKeysStmt)
+	rows, err := s.listKeysStmt.QueryContext(s.ctx)
 	if err != nil {
 		fmt.Printf("Unexpected error in store.ListKeys: %v", err)
 		return []string{}

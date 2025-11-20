@@ -273,16 +273,17 @@ func TestIndex(t *testing.T) {
 	var tests []testCase
 
 	tests = append(tests, testCase{description: "Index() with no errors returned from store and 1 object returned by ReadObjects(), should return one obj and no error", test: func(t *testing.T) {
+		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listStmt := NewMockStmt(ctrl)
+		listByIndexStmt := NewMockStmt(ctrl)
 		rows := &sql.Rows{}
 		objKey := "key"
 		indexName := "someindexname"
 		indexer := &Indexer{
-			ctx:             context.Background(),
+			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: listStmt,
+			listByIndexStmt: listByIndexStmt,
 			indexers: map[string]cache.IndexFunc{
 				indexName: func(obj interface{}) ([]string, error) {
 					return []string{objKey}, nil
@@ -291,7 +292,7 @@ func TestIndex(t *testing.T) {
 		}
 		testObject := testStoreObject{Id: "something", Val: "a"}
 
-		store.EXPECT().QueryForRows(context.Background(), indexer.listByIndexStmt, indexName, objKey).Return(rows, nil)
+		listByIndexStmt.EXPECT().QueryContext(ctx, indexName, objKey).Return(rows, nil)
 		store.EXPECT().GetType().Return(reflect.TypeOf(testObject))
 		store.EXPECT().ReadObjects(rows, reflect.TypeOf(testObject)).Return([]any{testObject}, nil)
 		objs, err := indexer.Index(indexName, testObject)
@@ -299,16 +300,17 @@ func TestIndex(t *testing.T) {
 		assert.Equal(t, []any{testObject}, objs)
 	}})
 	tests = append(tests, testCase{description: "Index() with no errors returned from store and multiple objects returned by ReadObjects(), should return multiple objects and no error", test: func(t *testing.T) {
+		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listStmt := NewMockStmt(ctrl)
+		listByIndexStmt := NewMockStmt(ctrl)
 		rows := &sql.Rows{}
 		objKey := "key"
 		indexName := "someindexname"
 		indexer := &Indexer{
-			ctx:             context.Background(),
+			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: listStmt,
+			listByIndexStmt: listByIndexStmt,
 			indexers: map[string]cache.IndexFunc{
 				indexName: func(obj interface{}) ([]string, error) {
 					return []string{objKey}, nil
@@ -317,7 +319,7 @@ func TestIndex(t *testing.T) {
 		}
 		testObject := testStoreObject{Id: "something", Val: "a"}
 
-		store.EXPECT().QueryForRows(context.Background(), indexer.listByIndexStmt, indexName, objKey).Return(rows, nil)
+		listByIndexStmt.EXPECT().QueryContext(ctx, indexName, objKey).Return(rows, nil)
 		store.EXPECT().GetType().Return(reflect.TypeOf(testObject))
 		store.EXPECT().ReadObjects(rows, reflect.TypeOf(testObject)).Return([]any{testObject, testObject}, nil)
 		objs, err := indexer.Index(indexName, testObject)
@@ -325,16 +327,17 @@ func TestIndex(t *testing.T) {
 		assert.Equal(t, []any{testObject, testObject}, objs)
 	}})
 	tests = append(tests, testCase{description: "Index() with no errors returned from store and no objects returned by ReadObjects(), should return no objects and no error", test: func(t *testing.T) {
+		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listStmt := NewMockStmt(ctrl)
+		listByIndexStmt := NewMockStmt(ctrl)
 		rows := &sql.Rows{}
 		objKey := "key"
 		indexName := "someindexname"
 		indexer := &Indexer{
-			ctx:             context.Background(),
+			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: listStmt,
+			listByIndexStmt: listByIndexStmt,
 			indexers: map[string]cache.IndexFunc{
 				indexName: func(obj interface{}) ([]string, error) {
 					return []string{objKey}, nil
@@ -343,7 +346,7 @@ func TestIndex(t *testing.T) {
 		}
 		testObject := testStoreObject{Id: "something", Val: "a"}
 
-		store.EXPECT().QueryForRows(context.Background(), indexer.listByIndexStmt, indexName, objKey).Return(rows, nil)
+		listByIndexStmt.EXPECT().QueryContext(ctx, indexName, objKey).Return(rows, nil)
 		store.EXPECT().GetType().Return(reflect.TypeOf(testObject))
 		store.EXPECT().ReadObjects(rows, reflect.TypeOf(testObject)).Return([]any{}, nil)
 		objs, err := indexer.Index(indexName, testObject)
@@ -351,15 +354,16 @@ func TestIndex(t *testing.T) {
 		assert.Equal(t, []any{}, objs)
 	}})
 	tests = append(tests, testCase{description: "Index() where index name is not in indexers, should return error", test: func(t *testing.T) {
+		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listStmt := NewMockStmt(ctrl)
+		listByIndexStmt := NewMockStmt(ctrl)
 		objKey := "key"
 		indexName := "someindexname"
 		indexer := &Indexer{
-			ctx:             context.Background(),
+			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: listStmt,
+			listByIndexStmt: listByIndexStmt,
 			indexers: map[string]cache.IndexFunc{
 				indexName: func(obj interface{}) ([]string, error) {
 					return []string{objKey}, nil
@@ -372,15 +376,16 @@ func TestIndex(t *testing.T) {
 		assert.NotNil(t, err)
 	}})
 	tests = append(tests, testCase{description: "Index() with an error returned from store QueryForRows, should return an error", test: func(t *testing.T) {
+		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listStmt := NewMockStmt(ctrl)
+		listByIndexStmt := NewMockStmt(ctrl)
 		objKey := "key"
 		indexName := "someindexname"
 		indexer := &Indexer{
-			ctx:             context.Background(),
+			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: listStmt,
+			listByIndexStmt: listByIndexStmt,
 			indexers: map[string]cache.IndexFunc{
 				indexName: func(obj interface{}) ([]string, error) {
 					return []string{objKey}, nil
@@ -389,21 +394,22 @@ func TestIndex(t *testing.T) {
 		}
 		testObject := testStoreObject{Id: "something", Val: "a"}
 
-		store.EXPECT().QueryForRows(context.Background(), indexer.listByIndexStmt, indexName, objKey).Return(nil, fmt.Errorf("error"))
+		listByIndexStmt.EXPECT().QueryContext(ctx, indexName, objKey).Return(nil, fmt.Errorf("error"))
 		_, err := indexer.Index(indexName, testObject)
 		assert.NotNil(t, err)
 	}})
 	tests = append(tests, testCase{description: "Index() with an errors returned from store ReadObjects(), should return an error", test: func(t *testing.T) {
+		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listStmt := NewMockStmt(ctrl)
+		listByIndexStmt := NewMockStmt(ctrl)
 		rows := &sql.Rows{}
 		objKey := "key"
 		indexName := "someindexname"
 		indexer := &Indexer{
-			ctx:             context.Background(),
+			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: listStmt,
+			listByIndexStmt: listByIndexStmt,
 			indexers: map[string]cache.IndexFunc{
 				indexName: func(obj interface{}) ([]string, error) {
 					return []string{objKey}, nil
@@ -412,23 +418,24 @@ func TestIndex(t *testing.T) {
 		}
 		testObject := testStoreObject{Id: "something", Val: "a"}
 
-		store.EXPECT().QueryForRows(context.Background(), indexer.listByIndexStmt, indexName, objKey).Return(rows, nil)
+		listByIndexStmt.EXPECT().QueryContext(ctx, indexName, objKey).Return(rows, nil)
 		store.EXPECT().GetType().Return(reflect.TypeOf(testObject))
 		store.EXPECT().ReadObjects(rows, reflect.TypeOf(testObject)).Return([]any{testObject}, fmt.Errorf("error"))
 		_, err := indexer.Index(indexName, testObject)
 		assert.NotNil(t, err)
 	}})
 	tests = append(tests, testCase{description: "Index() with no errors returned from store and multiple keys returned from index func, should return one obj and no error", test: func(t *testing.T) {
+		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listStmt := NewMockStmt(ctrl)
+		listByIndexStmt := NewMockStmt(ctrl)
 		rows := &sql.Rows{}
 		objKey := "key"
 		indexName := "someindexname"
 		indexer := &Indexer{
-			ctx:             context.Background(),
+			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: listStmt,
+			listByIndexStmt: listByIndexStmt,
 			indexers: map[string]cache.IndexFunc{
 				indexName: func(obj interface{}) ([]string, error) {
 					return []string{objKey, objKey + "2"}, nil
@@ -437,13 +444,14 @@ func TestIndex(t *testing.T) {
 		}
 		testObject := testStoreObject{Id: "something", Val: "a"}
 
-		mockStmt := NewMockStmt(ctrl)
 		store.EXPECT().GetName().Return("name")
-		store.EXPECT().Prepare(fmt.Sprintf(selectQueryFmt, "name", ", ?")).Return(mockStmt)
-		store.EXPECT().QueryForRows(context.Background(), indexer.listByIndexStmt, indexName, objKey, objKey+"2").Return(rows, nil)
+		listByIndexStmt.EXPECT().QueryContext(ctx, indexName, objKey, objKey+"2").Return(rows, nil)
+		selectStmt := NewMockStmt(ctrl)
+		store.EXPECT().Prepare(fmt.Sprintf(selectQueryFmt, "name", ", ?")).Return(selectStmt)
+		selectStmt.EXPECT().QueryContext(ctx, indexName, objKey, objKey+"2").Return(rows, nil)
 		store.EXPECT().GetType().Return(reflect.TypeOf(testObject))
 		store.EXPECT().ReadObjects(rows, reflect.TypeOf(testObject)).Return([]any{testObject}, nil)
-		mockStmt.EXPECT().Close().Return(nil)
+		selectStmt.EXPECT().Close()
 		objs, err := indexer.Index(indexName, testObject)
 		assert.Nil(t, err)
 		assert.Equal(t, []any{testObject}, objs)
@@ -463,20 +471,21 @@ func TestByIndex(t *testing.T) {
 	var tests []testCase
 
 	tests = append(tests, testCase{description: "IndexBy() with no errors returned from store and 1 object returned by ReadObjects(), should return one obj and no error", test: func(t *testing.T) {
+		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listStmt := NewMockStmt(ctrl)
+		listByIndexStmt := NewMockStmt(ctrl)
 		rows := &sql.Rows{}
 		objKey := "key"
 		indexName := "someindexname"
 		indexer := &Indexer{
-			ctx:             context.Background(),
+			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: listStmt,
+			listByIndexStmt: listByIndexStmt,
 		}
 		testObject := testStoreObject{Id: "something", Val: "a"}
 
-		store.EXPECT().QueryForRows(context.Background(), indexer.listByIndexStmt, indexName, objKey).Return(rows, nil)
+		listByIndexStmt.EXPECT().QueryContext(ctx, indexName, objKey).Return(rows, nil)
 		store.EXPECT().GetType().Return(reflect.TypeOf(testObject))
 		store.EXPECT().ReadObjects(rows, reflect.TypeOf(testObject)).Return([]any{testObject}, nil)
 		objs, err := indexer.ByIndex(indexName, objKey)
@@ -484,20 +493,21 @@ func TestByIndex(t *testing.T) {
 		assert.Equal(t, []any{testObject}, objs)
 	}})
 	tests = append(tests, testCase{description: "IndexBy() with no errors returned from store and multiple objects returned by ReadObjects(), should return multiple objects and no error", test: func(t *testing.T) {
+		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listStmt := NewMockStmt(ctrl)
+		listByIndexStmt := NewMockStmt(ctrl)
 		rows := &sql.Rows{}
 		objKey := "key"
 		indexName := "someindexname"
 		indexer := &Indexer{
-			ctx:             context.Background(),
+			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: listStmt,
+			listByIndexStmt: listByIndexStmt,
 		}
 		testObject := testStoreObject{Id: "something", Val: "a"}
 
-		store.EXPECT().QueryForRows(context.Background(), indexer.listByIndexStmt, indexName, objKey).Return(rows, nil)
+		listByIndexStmt.EXPECT().QueryContext(ctx, indexName, objKey).Return(rows, nil)
 		store.EXPECT().GetType().Return(reflect.TypeOf(testObject))
 		store.EXPECT().ReadObjects(rows, reflect.TypeOf(testObject)).Return([]any{testObject, testObject}, nil)
 		objs, err := indexer.ByIndex(indexName, objKey)
@@ -505,20 +515,21 @@ func TestByIndex(t *testing.T) {
 		assert.Equal(t, []any{testObject, testObject}, objs)
 	}})
 	tests = append(tests, testCase{description: "IndexBy() with no errors returned from store and no objects returned by ReadObjects(), should return no objects and no error", test: func(t *testing.T) {
+		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listStmt := NewMockStmt(ctrl)
+		listByIndexStmt := NewMockStmt(ctrl)
 		rows := &sql.Rows{}
 		objKey := "key"
 		indexName := "someindexname"
 		indexer := &Indexer{
-			ctx:             context.Background(),
+			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: listStmt,
+			listByIndexStmt: listByIndexStmt,
 		}
 		testObject := testStoreObject{Id: "something", Val: "a"}
 
-		store.EXPECT().QueryForRows(context.Background(), indexer.listByIndexStmt, indexName, objKey).Return(rows, nil)
+		listByIndexStmt.EXPECT().QueryContext(ctx, indexName, objKey).Return(rows, nil)
 		store.EXPECT().GetType().Return(reflect.TypeOf(testObject))
 		store.EXPECT().ReadObjects(rows, reflect.TypeOf(testObject)).Return([]any{}, nil)
 		objs, err := indexer.ByIndex(indexName, objKey)
@@ -526,36 +537,38 @@ func TestByIndex(t *testing.T) {
 		assert.Equal(t, []any{}, objs)
 	}})
 	tests = append(tests, testCase{description: "IndexBy() with an error returned from store QueryForRows, should return an error", test: func(t *testing.T) {
+		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listStmt := NewMockStmt(ctrl)
+		listByIndexStmt := NewMockStmt(ctrl)
 		objKey := "key"
 		indexName := "someindexname"
 		indexer := &Indexer{
-			ctx:             context.Background(),
+			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: listStmt,
+			listByIndexStmt: listByIndexStmt,
 		}
 
-		store.EXPECT().QueryForRows(context.Background(), indexer.listByIndexStmt, indexName, objKey).Return(nil, fmt.Errorf("error"))
+		listByIndexStmt.EXPECT().QueryContext(ctx, indexName, objKey).Return(nil, fmt.Errorf("error"))
 		_, err := indexer.ByIndex(indexName, objKey)
 		assert.NotNil(t, err)
 	}})
 	tests = append(tests, testCase{description: "IndexBy() with an errors returned from store ReadObjects(), should return an error", test: func(t *testing.T) {
+		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listStmt := NewMockStmt(ctrl)
+		listByIndexStmt := NewMockStmt(ctrl)
 		rows := &sql.Rows{}
 		objKey := "key"
 		indexName := "someindexname"
 		indexer := &Indexer{
-			ctx:             context.Background(),
+			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: listStmt,
+			listByIndexStmt: listByIndexStmt,
 		}
 		testObject := testStoreObject{Id: "something", Val: "a"}
 
-		store.EXPECT().QueryForRows(context.Background(), indexer.listByIndexStmt, indexName, objKey).Return(rows, nil)
+		listByIndexStmt.EXPECT().QueryContext(ctx, indexName, objKey).Return(rows, nil)
 		store.EXPECT().GetType().Return(reflect.TypeOf(testObject))
 		store.EXPECT().ReadObjects(rows, reflect.TypeOf(testObject)).Return([]any{testObject}, fmt.Errorf("error"))
 		_, err := indexer.ByIndex(indexName, objKey)
@@ -576,46 +589,49 @@ func TestListIndexFuncValues(t *testing.T) {
 	var tests []testCase
 
 	tests = append(tests, testCase{description: "ListIndexFuncvalues() with no errors returned from store and 1 object returned by ReadObjects(), should return one obj and no error", test: func(t *testing.T) {
+		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listStmt := NewMockStmt(ctrl)
+		listByIndexStmt := NewMockStmt(ctrl)
 		rows := &sql.Rows{}
 		indexName := "someindexname"
 		indexer := &Indexer{
-			ctx:             context.Background(),
+			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: listStmt,
+			listByIndexStmt: listByIndexStmt,
 		}
-		store.EXPECT().QueryForRows(context.Background(), indexer.listIndexValuesStmt, indexName).Return(rows, nil)
+		listByIndexStmt.EXPECT().QueryContext(ctx, indexName).Return(rows, nil)
 		store.EXPECT().ReadStrings(rows).Return([]string{"somestrings"}, nil)
 		vals := indexer.ListIndexFuncValues(indexName)
 		assert.Equal(t, []string{"somestrings"}, vals)
 	}})
 	tests = append(tests, testCase{description: "ListIndexFuncvalues() with QueryForRows() error returned from store, should panic", test: func(t *testing.T) {
+		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listStmt := NewMockStmt(ctrl)
+		listByIndexStmt := NewMockStmt(ctrl)
 		indexName := "someindexname"
 		indexer := &Indexer{
-			ctx:             context.Background(),
+			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: listStmt,
+			listByIndexStmt: listByIndexStmt,
 		}
-		store.EXPECT().QueryForRows(context.Background(), indexer.listIndexValuesStmt, indexName).Return(nil, fmt.Errorf("error"))
+		listByIndexStmt.EXPECT().QueryContext(ctx, indexName).Return(nil, fmt.Errorf("error"))
 		assert.Panics(t, func() { indexer.ListIndexFuncValues(indexName) })
 	}})
 	tests = append(tests, testCase{description: "ListIndexFuncvalues() with ReadStrings() error returned from store, should panic", test: func(t *testing.T) {
+		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listStmt := NewMockStmt(ctrl)
+		listByIndexStmt := NewMockStmt(ctrl)
 		rows := &sql.Rows{}
 		indexName := "someindexname"
 		indexer := &Indexer{
-			ctx:             context.Background(),
+			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: listStmt,
+			listByIndexStmt: listByIndexStmt,
 		}
-		store.EXPECT().QueryForRows(context.Background(), indexer.listIndexValuesStmt, indexName).Return(rows, nil)
+		listByIndexStmt.EXPECT().QueryContext(ctx, indexName).Return(rows, nil)
 		store.EXPECT().ReadStrings(rows).Return([]string{"somestrings"}, fmt.Errorf("error"))
 		assert.Panics(t, func() { indexer.ListIndexFuncValues(indexName) })
 	}})

@@ -400,7 +400,7 @@ func TestList(t *testing.T) {
 		c, _ := SetupMockDB(t)
 		store := SetupStore(t, c, shouldEncrypt)
 		r := &sql.Rows{}
-		c.EXPECT().QueryForRows(context.Background(), store.listStmt).Return(r, nil)
+		store.listStmt.(*MockStmt).EXPECT().QueryContext(context.Background()).Return(r, nil)
 		c.EXPECT().ReadObjects(r, reflect.TypeOf(testObject)).Return([]any{}, nil)
 		items := store.List()
 		assert.Len(t, items, 0)
@@ -411,7 +411,7 @@ func TestList(t *testing.T) {
 		store := SetupStore(t, c, shouldEncrypt)
 		fakeItemsToReturn := []any{"something1", 2, false}
 		r := &sql.Rows{}
-		c.EXPECT().QueryForRows(context.Background(), store.listStmt).Return(r, nil)
+		store.listStmt.(*MockStmt).EXPECT().QueryContext(context.Background()).Return(r, nil)
 		c.EXPECT().ReadObjects(r, reflect.TypeOf(testObject)).Return(fakeItemsToReturn, nil)
 		items := store.List()
 		assert.Equal(t, fakeItemsToReturn, items)
@@ -421,7 +421,7 @@ func TestList(t *testing.T) {
 		c, _ := SetupMockDB(t)
 		store := SetupStore(t, c, shouldEncrypt)
 		r := &sql.Rows{}
-		c.EXPECT().QueryForRows(context.Background(), store.listStmt).Return(r, nil)
+		store.listStmt.(*MockStmt).EXPECT().QueryContext(context.Background()).Return(r, nil)
 		c.EXPECT().ReadObjects(r, reflect.TypeOf(testObject)).Return(nil, fmt.Errorf("error"))
 		defer func() {
 			recover()
@@ -450,7 +450,7 @@ func TestListKeys(t *testing.T) {
 		c, _ := SetupMockDB(t)
 		store := SetupStore(t, c, shouldEncrypt)
 		r := &sql.Rows{}
-		c.EXPECT().QueryForRows(context.Background(), store.listKeysStmt).Return(r, nil)
+		store.listKeysStmt.(*MockStmt).EXPECT().QueryContext(context.Background()).Return(r, nil)
 		c.EXPECT().ReadStrings(r).Return([]string{"a", "b", "c"}, nil)
 		keys := store.ListKeys()
 		assert.Len(t, keys, 3)
@@ -461,7 +461,7 @@ func TestListKeys(t *testing.T) {
 		c, _ := SetupMockDB(t)
 		store := SetupStore(t, c, shouldEncrypt)
 		r := &sql.Rows{}
-		c.EXPECT().QueryForRows(context.Background(), store.listKeysStmt).Return(r, nil)
+		store.listKeysStmt.(*MockStmt).EXPECT().QueryContext(context.Background()).Return(r, nil)
 		c.EXPECT().ReadStrings(r).Return(nil, fmt.Errorf("error"))
 		keys := store.ListKeys()
 		assert.Len(t, keys, 0)
@@ -487,7 +487,7 @@ func TestGet(t *testing.T) {
 		c, _ := SetupMockDB(t)
 		store := SetupStore(t, c, shouldEncrypt)
 		r := &sql.Rows{}
-		c.EXPECT().QueryForRows(context.Background(), store.getStmt, testObject.Id).Return(r, nil)
+		store.getStmt.(*MockStmt).EXPECT().QueryContext(context.Background(), testObject.Id).Return(r, nil)
 		c.EXPECT().ReadObjects(r, reflect.TypeOf(testObject)).Return([]any{testObject}, nil)
 		item, exists, err := store.Get(testObject)
 		assert.Nil(t, err)
@@ -499,7 +499,7 @@ func TestGet(t *testing.T) {
 		c, _ := SetupMockDB(t)
 		store := SetupStore(t, c, shouldEncrypt)
 		r := &sql.Rows{}
-		c.EXPECT().QueryForRows(context.Background(), store.getStmt, testObject.Id).Return(r, nil)
+		store.getStmt.(*MockStmt).EXPECT().QueryContext(context.Background(), testObject.Id).Return(r, nil)
 		c.EXPECT().ReadObjects(r, reflect.TypeOf(testObject)).Return([]any{}, nil)
 		item, exists, err := store.Get(testObject)
 		assert.Nil(t, err)
@@ -511,7 +511,7 @@ func TestGet(t *testing.T) {
 		c, _ := SetupMockDB(t)
 		store := SetupStore(t, c, shouldEncrypt)
 		r := &sql.Rows{}
-		c.EXPECT().QueryForRows(context.Background(), store.getStmt, testObject.Id).Return(r, nil)
+		store.getStmt.(*MockStmt).EXPECT().QueryContext(context.Background(), testObject.Id).Return(r, nil)
 		c.EXPECT().ReadObjects(r, reflect.TypeOf(testObject)).Return(nil, fmt.Errorf("error"))
 		_, _, err := store.Get(testObject)
 		assert.NotNil(t, err)
@@ -537,7 +537,7 @@ func TestGetByKey(t *testing.T) {
 		c, _ := SetupMockDB(t)
 		store := SetupStore(t, c, shouldEncrypt)
 		r := &sql.Rows{}
-		c.EXPECT().QueryForRows(context.Background(), store.getStmt, testObject.Id).Return(r, nil)
+		store.getStmt.(*MockStmt).EXPECT().QueryContext(context.Background(), testObject.Id).Return(r, nil)
 		c.EXPECT().ReadObjects(r, reflect.TypeOf(testObject)).Return([]any{testObject}, nil)
 		item, exists, err := store.GetByKey(testObject.Id)
 		assert.Nil(t, err)
@@ -549,7 +549,7 @@ func TestGetByKey(t *testing.T) {
 		c, _ := SetupMockDB(t)
 		store := SetupStore(t, c, shouldEncrypt)
 		r := &sql.Rows{}
-		c.EXPECT().QueryForRows(context.Background(), store.getStmt, testObject.Id).Return(r, nil)
+		store.getStmt.(*MockStmt).EXPECT().QueryContext(context.Background(), testObject.Id).Return(r, nil)
 		c.EXPECT().ReadObjects(r, reflect.TypeOf(testObject)).Return([]any{}, nil)
 		item, exists, err := store.GetByKey(testObject.Id)
 		assert.Nil(t, err)
@@ -561,7 +561,7 @@ func TestGetByKey(t *testing.T) {
 		c, _ := SetupMockDB(t)
 		store := SetupStore(t, c, shouldEncrypt)
 		r := &sql.Rows{}
-		c.EXPECT().QueryForRows(context.Background(), store.getStmt, testObject.Id).Return(r, nil)
+		store.getStmt.(*MockStmt).EXPECT().QueryContext(context.Background(), testObject.Id).Return(r, nil)
 		c.EXPECT().ReadObjects(r, reflect.TypeOf(testObject)).Return(nil, fmt.Errorf("error"))
 		_, _, err := store.GetByKey(testObject.Id)
 		assert.NotNil(t, err)
@@ -782,6 +782,7 @@ func TestAddWithOneUpdate(t *testing.T) {
 	t.Parallel()
 	for _, test := range tests {
 		t.Run(test.description, func(t *testing.T) {
+			ctx := context.Background()
 			c, txC := SetupMockDB(t)
 			store := SetupStoreWithExternalDependencies(t, c, test.updateExternal, test.updateSelf)
 			expectPrepare := func(queryArg any) *MockStmt {
@@ -806,12 +807,12 @@ func TestAddWithOneUpdate(t *testing.T) {
 			WHERE lt1.label = ? AND f."spec.displayName" != ex2."spec.displayName"`
 			stmt := expectPrepare(WSIgnoringMatcher(rawStmt))
 			args1 := []any{"field.cattle.io/projectId"}
-			c.EXPECT().QueryForRows(gomock.Any(), stmt, args1)
+			stmt.EXPECT().QueryContext(ctx, args1)
 			c.EXPECT().ReadStrings2(gomock.Any()).Return([][]string{{"lego.cattle.io/fields1", "moose1"}}, nil)
 			// Override check:
 			rawStmt2 := `SELECT f."spec.displayName" FROM  "_v1_Namespace_fields" f WHERE f.key = ?`
 			stmt = expectPrepare(WSIgnoringMatcher(rawStmt2))
-			c.EXPECT().QueryForRows(gomock.Any(), stmt, gomock.Any())
+			stmt.EXPECT().QueryContext(ctx, gomock.Any())
 			c.EXPECT().ReadStrings(gomock.Any())
 
 			rawStmt2a := `UPDATE "_v1_Namespace_fields" SET "spec.displayName" = ? WHERE key = ?`
@@ -823,12 +824,12 @@ func TestAddWithOneUpdate(t *testing.T) {
 			WHERE f."spec.projectName" != ex2."spec.projectName"`
 			stmt = expectPrepare(WSIgnoringMatcher(rawStmt3))
 			args2 := []any{}
-			c.EXPECT().QueryForRows(gomock.Any(), stmt, args2)
+			stmt.EXPECT().QueryContext(ctx, args2)
 			c.EXPECT().ReadStrings2(gomock.Any()).Return([][]string{{"lego.cattle.io/fields2", "moose2"}}, nil)
 			// Override check:
 			rawStmt2 = `SELECT f."spec.projectName" FROM  "_v1_Pods_fields" f WHERE f.key = ?`
 			stmt = expectPrepare(WSIgnoringMatcher(rawStmt2))
-			c.EXPECT().QueryForRows(gomock.Any(), stmt, gomock.Any())
+			stmt.EXPECT().QueryContext(ctx, gomock.Any())
 			c.EXPECT().ReadStrings(gomock.Any())
 
 			rawStmt4 := `UPDATE "_v1_Pods_fields" SET "spec.projectName" = ? WHERE key = ?`
@@ -850,6 +851,7 @@ func TestAddWithExternalUpdates(t *testing.T) {
 	testObjectSerialized := db.SerializedObject{Bytes: []byte("testobject")}
 	var tests []testCase
 	tests = append(tests, testCase{description: "Add with no DB client errors", test: func(t *testing.T) {
+		ctx := context.Background()
 		c, txC := SetupMockDB(t)
 		store := SetupStoreWithExternalDependencies(t, c, true, false)
 		expectPrepare := func(queryArg any) *MockStmt {
@@ -874,13 +876,13 @@ func TestAddWithExternalUpdates(t *testing.T) {
 			WHERE lt1.label = ? AND f."spec.displayName" != ex2."spec.displayName"`
 		stmt := expectPrepare(WSIgnoringMatcher(rawStmt))
 		args1 := []any{"field.cattle.io/projectId"}
-		c.EXPECT().QueryForRows(gomock.Any(), stmt, args1)
+		stmt.EXPECT().QueryContext(ctx, args1)
 		c.EXPECT().ReadStrings2(gomock.Any()).Return([][]string{{"lego.cattle.io/fields1", "moose1"}}, nil)
 
 		rawStmt1b := `SELECT f."spec.displayName" FROM  "_v1_Namespace_fields" f WHERE f.key = ?`
 		stmt = expectPrepare(WSIgnoringMatcher(rawStmt1b))
 		args1b := []any{"lego.cattle.io/fields1"}
-		c.EXPECT().QueryForRows(gomock.Any(), stmt, args1b)
+		stmt.EXPECT().QueryContext(ctx, args1b)
 		c.EXPECT().ReadStrings(gomock.Any()).Return([]string{"flipper"}, nil)
 
 		rawStmt2 := `UPDATE "_v1_Namespace_fields" SET "spec.displayName" = ? WHERE key = ?`
@@ -893,13 +895,13 @@ func TestAddWithExternalUpdates(t *testing.T) {
          WHERE f."spec.projectName" != ex2."spec.projectName"`
 		stmt = expectPrepare(WSIgnoringMatcher(rawStmt3))
 		args2 := []any{}
-		c.EXPECT().QueryForRows(gomock.Any(), stmt, args2)
+		stmt.EXPECT().QueryContext(ctx, args2)
 		c.EXPECT().ReadStrings2(gomock.Any()).Return([][]string{{"lego.cattle.io/fields2", "moose2"}}, nil)
 
 		rawStmt3b := `SELECT f."spec.projectName" FROM  "_v1_Pods_fields" f WHERE f.key = ?`
 		stmt = expectPrepare(WSIgnoringMatcher(rawStmt3b))
 		args3b := []any{"lego.cattle.io/fields2"}
-		c.EXPECT().QueryForRows(gomock.Any(), stmt, args3b)
+		stmt.EXPECT().QueryContext(ctx, args3b)
 		c.EXPECT().ReadStrings(gomock.Any()).Return([]string{"snorkel"}, nil)
 
 		rawStmt4 := `UPDATE "_v1_Pods_fields" SET "spec.projectName" = ? WHERE key = ?`
@@ -928,6 +930,7 @@ func TestAddWithSelfUpdates(t *testing.T) {
 	testObjectSerialized := db.SerializedObject{Bytes: []byte("testobject")}
 	var tests []testCase
 	tests = append(tests, testCase{description: "Add with no DB client errors", test: func(t *testing.T) {
+		ctx := context.Background()
 		c, txC := SetupMockDB(t)
 		store := SetupStoreWithExternalDependencies(t, c, false, true)
 		expectPrepare := func(queryArg any) *MockStmt {
@@ -952,13 +955,13 @@ func TestAddWithSelfUpdates(t *testing.T) {
 			WHERE lt1.label = ? AND f."spec.displayName" != ex2."spec.displayName"`
 		stmt := expectPrepare(WSIgnoringMatcher(rawStmt))
 		args1 := []any{"field.cattle.io/projectId"}
-		c.EXPECT().QueryForRows(gomock.Any(), stmt, args1)
+		stmt.EXPECT().QueryContext(ctx, args1)
 		c.EXPECT().ReadStrings2(gomock.Any()).Return([][]string{{"lego.cattle.io/fields1", "moose1"}}, nil)
 
 		rawStmt1b := `SELECT f."spec.displayName" FROM  "_v1_Namespace_fields" f WHERE f.key = ?`
 		stmt = expectPrepare(WSIgnoringMatcher(rawStmt1b))
 		args1b := []any{"lego.cattle.io/fields1"}
-		c.EXPECT().QueryForRows(gomock.Any(), stmt, args1b)
+		stmt.EXPECT().QueryContext(ctx, args1b)
 		c.EXPECT().ReadStrings(gomock.Any()).Return([]string{"flipper"}, nil)
 
 		rawStmt2 := `UPDATE "_v1_Namespace_fields" SET "spec.displayName" = ? WHERE key = ?`
@@ -971,13 +974,13 @@ func TestAddWithSelfUpdates(t *testing.T) {
          WHERE f."spec.projectName" != ex2."spec.projectName"`
 		stmt = expectPrepare(WSIgnoringMatcher(rawStmt3))
 		args2 := []any{}
-		c.EXPECT().QueryForRows(gomock.Any(), stmt, args2)
+		stmt.EXPECT().QueryContext(ctx, args2)
 		c.EXPECT().ReadStrings2(gomock.Any()).Return([][]string{{"field.cattle.io/fixer", "moose1"}}, nil)
 
 		rawStmt3b := `SELECT f."spec.projectName" FROM  "_v1_Pods_fields" f WHERE f.key = ?`
 		stmt = expectPrepare(WSIgnoringMatcher(rawStmt3b))
 		args3b := []any{"field.cattle.io/fixer"}
-		c.EXPECT().QueryForRows(gomock.Any(), stmt, args3b)
+		stmt.EXPECT().QueryContext(ctx, args3b)
 		c.EXPECT().ReadStrings(gomock.Any()).Return([]string{"snorkel"}, nil)
 
 		rawStmt4 := `UPDATE "_v1_Pods_fields" SET "spec.projectName" = ? WHERE key = ?`
@@ -1006,6 +1009,7 @@ func TestAddWithBothUpdates(t *testing.T) {
 	testObjectSerialized := db.SerializedObject{Bytes: []byte("testobject")}
 	var tests []testCase
 	tests = append(tests, testCase{description: "Update both external and self", test: func(t *testing.T) {
+		ctx := context.Background()
 		c, txC := SetupMockDB(t)
 		store := SetupStoreWithExternalDependencies(t, c, true, true)
 		expectPrepare := func(queryArg any) *MockStmt {
@@ -1042,13 +1046,13 @@ func TestAddWithBothUpdates(t *testing.T) {
 				})
 			stmt := expectPrepare(WSIgnoringMatcher(rawStmt))
 			args1 := []any{"field.cattle.io/projectId"}
-			c.EXPECT().QueryForRows(gomock.Any(), stmt, args1)
+			stmt.EXPECT().QueryContext(ctx, args1)
 			c.EXPECT().ReadStrings2(gomock.Any()).Return([][]string{{"lego.cattle.io/fields1", "moose1"}}, nil)
 			// Override check:
 			rawStmt2 := `SELECT f."spec.displayName" FROM  "_v1_Namespace_fields" f WHERE f.key = ?`
 			stmt = expectPrepare(WSIgnoringMatcher(rawStmt2))
 			args1b := []any{"lego.cattle.io/fields1"}
-			c.EXPECT().QueryForRows(gomock.Any(), stmt, args1b)
+			stmt.EXPECT().QueryContext(ctx, args1b)
 			c.EXPECT().ReadStrings(gomock.Any())
 
 			rawStmt2a := `UPDATE "_v1_Namespace_fields" SET "spec.displayName" = ? WHERE key = ?`
@@ -1057,14 +1061,14 @@ func TestAddWithBothUpdates(t *testing.T) {
 
 			stmt = expectPrepare(WSIgnoringMatcher(rawStmt3))
 			args2 := []any{}
-			c.EXPECT().QueryForRows(gomock.Any(), stmt, args2)
+			stmt.EXPECT().QueryContext(ctx, args2)
 
 			c.EXPECT().ReadStrings2(gomock.Any()).Return([][]string{{"field.cattle.io/fixer", "moose1"}}, nil)
 			// Override check:
 			rawStmt2 = `SELECT f."spec.projectName" FROM  "_v1_Pods_fields" f WHERE f.key = ?`
 			stmt = expectPrepare(WSIgnoringMatcher(rawStmt2))
 			args3b := []any{"field.cattle.io/fixer"}
-			c.EXPECT().QueryForRows(gomock.Any(), stmt, args3b)
+			stmt.EXPECT().QueryContext(ctx, args3b)
 			c.EXPECT().ReadStrings(gomock.Any())
 
 			rawStmt4 := `UPDATE "_v1_Pods_fields" SET "spec.projectName" = ? WHERE key = ?`

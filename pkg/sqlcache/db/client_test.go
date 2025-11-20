@@ -58,43 +58,6 @@ func TestNewClient(t *testing.T) {
 	}
 }
 
-func TestQueryForRows(t *testing.T) {
-	type testCase struct {
-		description string
-		test        func(t *testing.T)
-	}
-
-	var tests []testCase
-
-	// Tests with shouldEncryptSet to false
-	tests = append(tests, testCase{description: "Query rows with no params, no errors", test: func(t *testing.T) {
-		c := SetupMockConnection(t)
-		client := SetupClient(c, nil, nil)
-		s := NewMockStmt(gomock.NewController(t))
-		ctx := context.Background()
-		r := &sql.Rows{}
-		s.EXPECT().QueryContext(ctx).Return(r, nil)
-		rows, err := client.QueryForRows(ctx, s)
-		assert.Nil(t, err)
-		assert.Equal(t, r, rows)
-	},
-	})
-	tests = append(tests, testCase{description: "Query rows with params, QueryContext() error", test: func(t *testing.T) {
-		c := SetupMockConnection(t)
-		client := SetupClient(c, nil, nil)
-		s := NewMockStmt(gomock.NewController(t))
-		ctx := context.Background()
-		s.EXPECT().QueryContext(ctx).Return(nil, fmt.Errorf("error"))
-		_, err := client.QueryForRows(ctx, s)
-		assert.NotNil(t, err)
-	},
-	})
-	t.Parallel()
-	for _, test := range tests {
-		t.Run(test.description, func(t *testing.T) { test.test(t) })
-	}
-}
-
 func TestQueryObjects(t *testing.T) {
 	type testCase struct {
 		description string

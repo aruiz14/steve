@@ -47,7 +47,6 @@ type Client interface {
 	Close() error
 	WithTransaction(ctx context.Context, forWriting bool, f WithTransactionFunction) error
 	Prepare(stmt string) Stmt
-	QueryForRows(ctx context.Context, stmt Stmt, params ...any) (Rows, error)
 	ReadObjects(rows Rows, typ reflect.Type) ([]any, error)
 	ReadStrings(rows Rows) ([]string, error)
 	ReadStrings2(rows Rows) ([][]string, error)
@@ -212,12 +211,6 @@ func (c *client) Prepare(queryString string) Stmt {
 		Stmt:        prepared,
 		queryString: queryString,
 	}
-}
-
-// QueryForRows queries the given stmt with the given params and returns the resulting rows. The query wil be retried
-// given a sqlite busy error.
-func (c *client) QueryForRows(ctx context.Context, stmt Stmt, params ...any) (Rows, error) {
-	return stmt.QueryContext(ctx, params...)
 }
 
 // ReadObjects Scans the given rows, performs any necessary decryption, converts the data to objects of the given type,

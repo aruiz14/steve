@@ -227,26 +227,6 @@ func (mr *MockStoreMockRecorder) Prepare(stmt any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Prepare", reflect.TypeOf((*MockStore)(nil).Prepare), stmt)
 }
 
-// QueryForRows mocks base method.
-func (m *MockStore) QueryForRows(ctx context.Context, stmt db.Stmt, params ...any) (db.Rows, error) {
-	m.ctrl.T.Helper()
-	varargs := []any{ctx, stmt}
-	for _, a := range params {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "QueryForRows", varargs...)
-	ret0, _ := ret[0].(db.Rows)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// QueryForRows indicates an expected call of QueryForRows.
-func (mr *MockStoreMockRecorder) QueryForRows(ctx, stmt any, params ...any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx, stmt}, params...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryForRows", reflect.TypeOf((*MockStore)(nil).QueryForRows), varargs...)
-}
-
 // ReadInt mocks base method.
 func (m *MockStore) ReadInt(rows db.Rows) (int, error) {
 	m.ctrl.T.Helper()
