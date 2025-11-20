@@ -75,12 +75,18 @@ func (s *stmt) Exec(args ...any) (sql.Result, error) {
 
 func (s *stmt) QueryContext(ctx context.Context, args ...any) (Rows, error) {
 	defer s.log(time.Now(), s.queryString, args)
-	res, err := s.Stmt.QueryContext(ctx, args...)
+
+	// The underlying sqlite implementation seems to not cleanly close transactions when a query is interrupted
+	// We use context.Background to let the query finish correctly, immediately checking the original context afterward and properly closing Rows if canceled
+	res, err := s.Stmt.QueryContext(context.Background(), args...)
 	if err != nil {
-		return res, &QueryError{
+		return nil, &QueryError{
 			QueryString: s.queryString,
 			Err:         err,
 		}
+	} else if ctx.Err() != nil {
+		res.Close()
+		return nil, ctx.Err()
 	}
 	return rows{Rows: res, queryString: s.queryString}, nil
 }
