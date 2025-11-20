@@ -335,6 +335,21 @@ func (mr *MockTxClientMockRecorder) Exec(query any, args ...any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Exec", reflect.TypeOf((*MockTxClient)(nil).Exec), varargs...)
 }
 
+// Prepare mocks base method.
+func (m *MockTxClient) Prepare(query string) (db.Stmt, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Prepare", query)
+	ret0, _ := ret[0].(db.Stmt)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Prepare indicates an expected call of Prepare.
+func (mr *MockTxClientMockRecorder) Prepare(query any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Prepare", reflect.TypeOf((*MockTxClient)(nil).Prepare), query)
+}
+
 // Stmt mocks base method.
 func (m *MockTxClient) Stmt(stmt db.Stmt) db.Stmt {
 	m.ctrl.T.Helper()

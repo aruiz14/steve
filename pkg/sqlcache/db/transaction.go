@@ -13,6 +13,7 @@ import (
 // rationale 2: allow mocking
 type TxClient interface {
 	Exec(query string, args ...any) (sql.Result, error)
+	Prepare(query string) (Stmt, error)
 	Stmt(stmt Stmt) Stmt
 }
 
@@ -51,6 +52,18 @@ func (c txClient) Stmt(s Stmt) Stmt {
 		Stmt:        c.tx.Stmt(s.SQLStmt()),
 		queryString: s.GetQueryString(),
 	}
+}
+
+func (c txClient) Prepare(query string) (Stmt, error) {
+	prepared, err := c.tx.Prepare(query)
+	if err != nil {
+		return nil, err
+	}
+	return &stmt{
+		queryLogger: c.queryLogger,
+		Stmt:        prepared,
+		queryString: query,
+	}, nil
 }
 
 func WithQueryLogger(logger logging.QueryLogger) TxClientOption {
