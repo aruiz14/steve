@@ -214,10 +214,10 @@ func (mr *MockStoreMockRecorder) ListKeys() *gomock.Call {
 }
 
 // Prepare mocks base method.
-func (m *MockStore) Prepare(stmt string) db.Stmt {
+func (m *MockStore) Prepare(stmt string) db.VirtualStmt {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Prepare", stmt)
-	ret0, _ := ret[0].(db.Stmt)
+	ret0, _ := ret[0].(db.VirtualStmt)
 	return ret0
 }
 
@@ -419,7 +419,7 @@ func (mr *MockStoreMockRecorder) Update(obj any) *gomock.Call {
 }
 
 // Upsert mocks base method.
-func (m *MockStore) Upsert(tx db.TxClient, stmt db.Stmt, key string, obj db.SerializedObject) error {
+func (m *MockStore) Upsert(tx db.TxClient, stmt db.VirtualStmt, key string, obj db.SerializedObject) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Upsert", tx, stmt, key, obj)
 	ret0, _ := ret[0].(error)

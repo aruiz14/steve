@@ -55,13 +55,13 @@ type Store struct {
 	keyFunc            cache.KeyFunc
 	shouldEncrypt      bool
 
-	upsertStmt    db.Stmt
-	deleteStmt    db.Stmt
-	deleteAllStmt db.Stmt
-	dropBaseStmt  db.Stmt
-	getStmt       db.Stmt
-	listStmt      db.Stmt
-	listKeysStmt  db.Stmt
+	upsertStmt    db.VirtualStmt
+	deleteStmt    db.VirtualStmt
+	deleteAllStmt db.VirtualStmt
+	dropBaseStmt  db.VirtualStmt
+	getStmt       db.VirtualStmt
+	listStmt      db.VirtualStmt
+	listKeysStmt  db.VirtualStmt
 
 	afterAdd       []func(key string, obj any, tx db.TxClient) error
 	afterUpdate    []func(key string, obj any, tx db.TxClient) error
@@ -163,12 +163,7 @@ func (s *Store) updateExternalInfo(tx db.TxClient, key string, externalUpdateInf
 			labelDep.TargetFinalFieldName,
 			labelDep.TargetFinalFieldName,
 		)
-		getStmt, err := tx.Prepare(rawGetStmt)
-		if err != nil {
-			return err
-		}
-		defer getStmt.Close()
-		rows, err := getStmt.QueryContext(s.ctx, labelDep.SourceLabelName)
+		rows, err := tx.Query(rawGetStmt, labelDep.SourceLabelName)
 		if err != nil {
 			if !isDBError(err) {
 				logrus.Infof("Error getting external info for table %s, key %s: %v", labelDep.TargetGVK, key, err)
@@ -187,19 +182,15 @@ func (s *Store) updateExternalInfo(tx db.TxClient, key string, externalUpdateInf
 			sourceKey := innerResult[0]
 			finalTargetValue := innerResult[1]
 			ignoreUpdate, err := s.overrideCheck(tx, labelDep.TargetFinalFieldName, labelDep.SourceGVK, sourceKey, finalTargetValue)
-			if ignoreUpdate || err != nil {
+			if err != nil {
+				log.Errorf("%v", err)
+				continue
+			} else if ignoreUpdate {
 				continue
 			}
 			rawStmt := fmt.Sprintf(`UPDATE "%s_fields" SET "%s" = ? WHERE key = ?`,
 				labelDep.SourceGVK, labelDep.TargetFinalFieldName)
-			preparedStmt, err := tx.Prepare(rawStmt)
-			if err != nil {
-				logrus.Errorf("preparing update statement %q: %v", rawStmt, err)
-				continue
-			}
-			defer preparedStmt.Close()
-			_, err = preparedStmt.Exec(finalTargetValue, sourceKey)
-			if err != nil {
+			if _, err = tx.Exec(rawStmt, finalTargetValue, sourceKey); err != nil {
 				logrus.Infof("Error running %s(%s, %s): %s", rawStmt, finalTargetValue, sourceKey, err)
 				continue
 			}
@@ -218,13 +209,7 @@ func (s *Store) updateExternalInfo(tx db.TxClient, key string, externalUpdateInf
 			nonLabelDep.TargetFinalFieldName)
 		// TODO: Try to fold the two blocks together
 
-		getStmt, err := tx.Prepare(rawGetStmt)
-		if err != nil {
-			logrus.Errorf("preparing get statement %q: %v", rawGetStmt, err)
-			continue
-		}
-		defer getStmt.Close()
-		rows, err := getStmt.QueryContext(s.ctx)
+		rows, err := tx.Query(rawGetStmt)
 		if err != nil {
 			if !isDBError(err) {
 				logrus.Infof("Error getting external info for table %s, key %s: %v", nonLabelDep.TargetGVK, key, err)
@@ -243,19 +228,15 @@ func (s *Store) updateExternalInfo(tx db.TxClient, key string, externalUpdateInf
 			sourceKey := innerResult[0]
 			finalTargetValue := innerResult[1]
 			ignoreUpdate, err := s.overrideCheck(tx, nonLabelDep.TargetFinalFieldName, nonLabelDep.SourceGVK, sourceKey, finalTargetValue)
-			if ignoreUpdate || err != nil {
+			if err != nil {
+				logrus.Errorf("%v", err)
+				continue
+			} else if ignoreUpdate {
 				continue
 			}
 			rawStmt := fmt.Sprintf(`UPDATE "%s_fields" SET "%s" = ? WHERE key = ?`,
 				nonLabelDep.SourceGVK, nonLabelDep.TargetFinalFieldName)
-			preparedStmt, err := tx.Prepare(rawStmt)
-			if err != nil {
-				logrus.Errorf("preparing update statement %q: %v", rawStmt, err)
-				continue
-			}
-			defer preparedStmt.Close()
-			_, err = preparedStmt.Exec(finalTargetValue, sourceKey)
-			if err != nil {
+			if _, err = tx.Exec(rawStmt, finalTargetValue, sourceKey); err != nil {
 				logrus.Infof("Error running %s(%s, %s): %s", rawStmt, finalTargetValue, sourceKey, err)
 				continue
 			}
@@ -274,12 +255,7 @@ func (s *Store) updateExternalInfo(tx db.TxClient, key string, externalUpdateInf
 func (s *Store) overrideCheck(tx db.TxClient, finalFieldName, sourceGVK, sourceKey, finalTargetValue string) (bool, error) {
 	rawGetValueStmt := fmt.Sprintf(`SELECT f."%s" FROM  "%s_fields" f WHERE f.key = ?`,
 		finalFieldName, sourceGVK)
-	getValueStmt, err := tx.Prepare(rawGetValueStmt)
-	if err != nil {
-		return false, err
-	}
-	defer getValueStmt.Close()
-	rows, err := getValueStmt.QueryContext(s.ctx, sourceKey)
+	rows, err := tx.Query(rawGetValueStmt, sourceKey)
 	if err != nil {
 		logrus.Debugf("Checking the field, got error %s", err)
 		return false, err
@@ -308,7 +284,7 @@ func (s *Store) overrideCheck(tx db.TxClient, finalFieldName, sourceGVK, sourceK
 // deleteByKey deletes the object associated with key, if it exists in this Store
 func (s *Store) deleteByKey(key string, obj any) error {
 	return s.WriteTransaction(s.ctx, func(tx db.TxClient) error {
-		if _, err := tx.Stmt(s.deleteStmt).Exec(key); err != nil {
+		if _, err := tx.ExecStmt(s.deleteStmt, key); err != nil {
 			return err
 		}
 		return s.runAfterDelete(key, obj, tx)
@@ -317,12 +293,15 @@ func (s *Store) deleteByKey(key string, obj any) error {
 
 // GetByKey returns the object associated with the given object's key
 func (s *Store) GetByKey(key string) (item any, exists bool, err error) {
-	rows, err := s.getStmt.QueryContext(s.ctx, key)
-	if err != nil {
-		return nil, false, err
-	}
-	result, err := s.ReadObjects(rows, s.typ)
-	if err != nil {
+	var result []any
+	if err := s.ReadOnlyTransaction(s.ctx, func(tx db.TxClient) error {
+		rows, err := tx.QueryStmt(s.getStmt, key)
+		if err != nil {
+			return err
+		}
+		result, err = s.ReadObjects(rows, s.typ)
+		return err
+	}); err != nil {
 		return nil, false, err
 	}
 
@@ -404,12 +383,15 @@ func (s *Store) Delete(obj any) error {
 // List returns a list of all the currently known objects
 // Note: I/O errors will panic this function, as the interface signature does not allow returning errors
 func (s *Store) List() []any {
-	rows, err := s.listStmt.QueryContext(s.ctx)
-	if err != nil {
-		panic(err)
-	}
-	result, err := s.ReadObjects(rows, s.typ)
-	if err != nil {
+	var result []any
+	if err := s.ReadOnlyTransaction(s.ctx, func(tx db.TxClient) error {
+		rows, err := tx.QueryStmt(s.listStmt)
+		if err != nil {
+			return err
+		}
+		result, err = s.ReadObjects(rows, s.typ)
+		return err
+	}); err != nil {
 		panic(fmt.Errorf("error in Store.List: %w", err))
 	}
 	return result
@@ -419,15 +401,16 @@ func (s *Store) List() []any {
 // Note: Atm it doesn't appear returning nil in the case of an error has any detrimental effects. An error is not
 // uncommon enough nor does it appear to necessitate a panic.
 func (s *Store) ListKeys() []string {
-	rows, err := s.listKeysStmt.QueryContext(s.ctx)
-	if err != nil {
+	var result []string
+	if err := s.ReadOnlyTransaction(s.ctx, func(tx db.TxClient) error {
+		rows, err := tx.QueryStmt(s.listKeysStmt)
+		if err != nil {
+			return nil
+		}
+		result, err = s.ReadStrings(rows)
+		return err
+	}); err != nil {
 		fmt.Printf("Unexpected error in store.ListKeys: %v", err)
-		return []string{}
-	}
-	result, err := s.ReadStrings(rows)
-	if err != nil {
-		fmt.Printf("Unexpected error in store.ListKeys: %v\n", err)
-		return []string{}
 	}
 	return result
 }
@@ -472,7 +455,7 @@ func (s *Store) replaceByKey(objects map[string]any) error {
 		serializedObjects[key] = serialized
 	}
 	return s.WriteTransaction(s.ctx, func(txC db.TxClient) error {
-		if _, err := txC.Stmt(s.deleteAllStmt).Exec(); err != nil {
+		if _, err := txC.ExecStmt(s.deleteAllStmt); err != nil {
 			return err
 		}
 
@@ -545,7 +528,7 @@ func (s *Store) DropAll(ctx context.Context) error {
 		if err := s.runBeforeDropAll(tx); err != nil {
 			return err
 		}
-		_, err := tx.Stmt(s.dropBaseStmt).Exec(s.GetName())
+		_, err := tx.ExecStmt(s.dropBaseStmt)
 		return err
 	})
 	if err != nil {

@@ -313,33 +313,64 @@ func (mr *MockTxClientMockRecorder) Exec(query any, args ...any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Exec", reflect.TypeOf((*MockTxClient)(nil).Exec), varargs...)
 }
 
-// Prepare mocks base method.
-func (m *MockTxClient) Prepare(query string) (Stmt, error) {
+// ExecStmt mocks base method.
+func (m *MockTxClient) ExecStmt(query VirtualStmt, args ...any) (sql.Result, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Prepare", query)
-	ret0, _ := ret[0].(Stmt)
+	varargs := []any{query}
+	for _, a := range args {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "ExecStmt", varargs...)
+	ret0, _ := ret[0].(sql.Result)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// Prepare indicates an expected call of Prepare.
-func (mr *MockTxClientMockRecorder) Prepare(query any) *gomock.Call {
+// ExecStmt indicates an expected call of ExecStmt.
+func (mr *MockTxClientMockRecorder) ExecStmt(query any, args ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Prepare", reflect.TypeOf((*MockTxClient)(nil).Prepare), query)
+	varargs := append([]any{query}, args...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecStmt", reflect.TypeOf((*MockTxClient)(nil).ExecStmt), varargs...)
 }
 
-// Stmt mocks base method.
-func (m *MockTxClient) Stmt(stmt Stmt) Stmt {
+// Query mocks base method.
+func (m *MockTxClient) Query(query string, args ...any) (Rows, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Stmt", stmt)
-	ret0, _ := ret[0].(Stmt)
-	return ret0
+	varargs := []any{query}
+	for _, a := range args {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "Query", varargs...)
+	ret0, _ := ret[0].(Rows)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
-// Stmt indicates an expected call of Stmt.
-func (mr *MockTxClientMockRecorder) Stmt(stmt any) *gomock.Call {
+// Query indicates an expected call of Query.
+func (mr *MockTxClientMockRecorder) Query(query any, args ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stmt", reflect.TypeOf((*MockTxClient)(nil).Stmt), stmt)
+	varargs := append([]any{query}, args...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Query", reflect.TypeOf((*MockTxClient)(nil).Query), varargs...)
+}
+
+// QueryStmt mocks base method.
+func (m *MockTxClient) QueryStmt(query VirtualStmt, args ...any) (Rows, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{query}
+	for _, a := range args {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "QueryStmt", varargs...)
+	ret0, _ := ret[0].(Rows)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// QueryStmt indicates an expected call of QueryStmt.
+func (mr *MockTxClientMockRecorder) QueryStmt(query any, args ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{query}, args...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryStmt", reflect.TypeOf((*MockTxClient)(nil).QueryStmt), varargs...)
 }
 
 // MockStmt is a mock of Stmt interface.
@@ -366,39 +397,6 @@ func (m *MockStmt) EXPECT() *MockStmtMockRecorder {
 	return m.recorder
 }
 
-// Close mocks base method.
-func (m *MockStmt) Close() error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Close")
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Close indicates an expected call of Close.
-func (mr *MockStmtMockRecorder) Close() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockStmt)(nil).Close))
-}
-
-// Exec mocks base method.
-func (m *MockStmt) Exec(args ...any) (sql.Result, error) {
-	m.ctrl.T.Helper()
-	varargs := []any{}
-	for _, a := range args {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "Exec", varargs...)
-	ret0, _ := ret[0].(sql.Result)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// Exec indicates an expected call of Exec.
-func (mr *MockStmtMockRecorder) Exec(args ...any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Exec", reflect.TypeOf((*MockStmt)(nil).Exec), args...)
-}
-
 // GetQueryString mocks base method.
 func (m *MockStmt) GetQueryString() string {
 	m.ctrl.T.Helper()
@@ -411,26 +409,6 @@ func (m *MockStmt) GetQueryString() string {
 func (mr *MockStmtMockRecorder) GetQueryString() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetQueryString", reflect.TypeOf((*MockStmt)(nil).GetQueryString))
-}
-
-// QueryContext mocks base method.
-func (m *MockStmt) QueryContext(ctx context.Context, args ...any) (Rows, error) {
-	m.ctrl.T.Helper()
-	varargs := []any{ctx}
-	for _, a := range args {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "QueryContext", varargs...)
-	ret0, _ := ret[0].(Rows)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// QueryContext indicates an expected call of QueryContext.
-func (mr *MockStmtMockRecorder) QueryContext(ctx any, args ...any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx}, args...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryContext", reflect.TypeOf((*MockStmt)(nil).QueryContext), varargs...)
 }
 
 // SQLStmt mocks base method.

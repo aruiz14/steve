@@ -44,17 +44,17 @@ type ListOptionIndexer struct {
 	// gcKeepCount is how many events to keep in _events table when gc runs
 	gcKeepCount int
 
-	upsertEventsStmt        db.Stmt
-	findEventsRowByRVStmt   db.Stmt
-	listEventsAfterStmt     db.Stmt
-	deleteEventsByCountStmt db.Stmt
-	dropEventsStmt          db.Stmt
-	addFieldsStmt           db.Stmt
-	deleteFieldsStmt        db.Stmt
-	dropFieldsStmt          db.Stmt
-	upsertLabelsStmt        db.Stmt
-	deleteLabelsStmt        db.Stmt
-	dropLabelsStmt          db.Stmt
+	upsertEventsStmt        db.VirtualStmt
+	findEventsRowByRVStmt   db.VirtualStmt
+	listEventsAfterStmt     db.VirtualStmt
+	deleteEventsByCountStmt db.VirtualStmt
+	dropEventsStmt          db.VirtualStmt
+	addFieldsStmt           db.VirtualStmt
+	deleteFieldsStmt        db.VirtualStmt
+	dropFieldsStmt          db.VirtualStmt
+	upsertLabelsStmt        db.VirtualStmt
+	deleteLabelsStmt        db.VirtualStmt
+	dropLabelsStmt          db.VirtualStmt
 }
 
 var (
@@ -327,7 +327,7 @@ func (l *ListOptionIndexer) Watch(ctx context.Context, opts WatchOptions, events
 	}
 
 	if err := l.ReadOnlyTransaction(ctx, func(tx db.TxClient) error {
-		rows, err := tx.Stmt(l.findEventsRowByRVStmt).QueryContext(ctx, targetRV)
+		rows, err := tx.QueryStmt(l.findEventsRowByRVStmt, targetRV)
 		if err != nil {
 			return err
 		}
@@ -345,7 +345,7 @@ func (l *ListOptionIndexer) Watch(ctx context.Context, opts WatchOptions, events
 		}
 
 		// Backfilling previous events from resourceVersion
-		rows, err = tx.Stmt(l.listEventsAfterStmt).QueryContext(ctx, rowID)
+		rows, err = tx.QueryStmt(l.listEventsAfterStmt, rowID)
 		if err != nil {
 			return err
 		}
@@ -577,12 +577,12 @@ func (l *ListOptionIndexer) upsertEvent(tx db.TxClient, eventType watch.EventTyp
 	if err != nil {
 		return err
 	}
-	_, err = tx.Stmt(l.upsertEventsStmt).Exec(latestRV, eventType, serialized.Bytes, serialized.Nonce, serialized.KeyID)
+	_, err = tx.ExecStmt(l.upsertEventsStmt, latestRV, eventType, serialized.Bytes, serialized.Nonce, serialized.KeyID)
 	return err
 }
 
 func (l *ListOptionIndexer) dropEvents(tx db.TxClient) error {
-	_, err := tx.Stmt(l.dropEventsStmt).Exec()
+	_, err := tx.ExecStmt(l.dropEventsStmt)
 	return err
 }
 
@@ -608,7 +608,7 @@ func (l *ListOptionIndexer) addIndexFields(key string, obj any, tx db.TxClient) 
 		}
 	}
 
-	_, err := tx.Stmt(l.addFieldsStmt).Exec(args...)
+	_, err := tx.ExecStmt(l.addFieldsStmt, args...)
 	return err
 }
 
@@ -620,7 +620,7 @@ func (l *ListOptionIndexer) addLabels(key string, obj any, tx db.TxClient) error
 	}
 	incomingLabels := k8sObj.GetLabels()
 	for k, v := range incomingLabels {
-		if _, err := tx.Stmt(l.upsertLabelsStmt).Exec(key, k, v); err != nil {
+		if _, err := tx.ExecStmt(l.upsertLabelsStmt, key, k, v); err != nil {
 			return err
 		}
 	}
@@ -628,22 +628,22 @@ func (l *ListOptionIndexer) addLabels(key string, obj any, tx db.TxClient) error
 }
 
 func (l *ListOptionIndexer) deleteFields(tx db.TxClient) error {
-	_, err := tx.Stmt(l.deleteFieldsStmt).Exec()
+	_, err := tx.ExecStmt(l.deleteFieldsStmt)
 	return err
 }
 
 func (l *ListOptionIndexer) dropFields(tx db.TxClient) error {
-	_, err := tx.Stmt(l.dropFieldsStmt).Exec()
+	_, err := tx.ExecStmt(l.dropFieldsStmt)
 	return err
 }
 
 func (l *ListOptionIndexer) deleteLabels(tx db.TxClient) error {
-	_, err := tx.Stmt(l.deleteLabelsStmt).Exec()
+	_, err := tx.ExecStmt(l.deleteLabelsStmt)
 	return err
 }
 
 func (l *ListOptionIndexer) dropLabels(tx db.TxClient) error {
-	_, err := tx.Stmt(l.dropLabelsStmt).Exec()
+	_, err := tx.ExecStmt(l.dropLabelsStmt)
 	return err
 }
 
@@ -925,17 +925,10 @@ func (l *ListOptionIndexer) constructQuery(lo *sqltypes.ListOptions, partitions 
 }
 
 func (l *ListOptionIndexer) executeQuery(ctx context.Context, queryInfo *QueryInfo) (result *unstructured.UnstructuredList, total int, token string, err error) {
-	stmt := l.Prepare(queryInfo.query)
-	defer func() {
-		if cerr := stmt.Close(); cerr != nil && err == nil {
-			err = errors.Join(err, cerr)
-		}
-	}()
-
 	var items []any
 	err = l.ReadOnlyTransaction(ctx, func(tx db.TxClient) error {
 		now := time.Now()
-		rows, err := tx.Stmt(stmt).QueryContext(ctx, queryInfo.params...)
+		rows, err := tx.Query(queryInfo.query, queryInfo.params...)
 		if err != nil {
 			return err
 		}
@@ -948,14 +941,8 @@ func (l *ListOptionIndexer) executeQuery(ctx context.Context, queryInfo *QueryIn
 
 		total = len(items)
 		if queryInfo.countQuery != "" {
-			countStmt := l.Prepare(queryInfo.countQuery)
-			defer func() {
-				if cerr := countStmt.Close(); cerr != nil {
-					err = errors.Join(err, cerr)
-				}
-			}()
 			now = time.Now()
-			rows, err := tx.Stmt(countStmt).QueryContext(ctx, queryInfo.countParams...)
+			rows, err := tx.Query(queryInfo.countQuery, queryInfo.countParams...)
 			if err != nil {
 				return err
 			}
@@ -1634,7 +1621,7 @@ func (l *ListOptionIndexer) RunGC(ctx context.Context) {
 		select {
 		case <-ticker.C:
 			err := l.WriteTransaction(ctx, func(tx db.TxClient) error {
-				_, err := tx.Stmt(l.deleteEventsByCountStmt).Exec(l.gcKeepCount)
+				_, err := tx.ExecStmt(l.deleteEventsByCountStmt, l.gcKeepCount)
 				return err
 			})
 			if err != nil {

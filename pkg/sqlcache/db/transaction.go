@@ -7,16 +7,6 @@ import (
 	"github.com/rancher/steve/pkg/sqlcache/db/logging"
 )
 
-// TxClient is an interface over a subset of sql.Tx methods
-// rationale 1: explicitly forbid direct access to Commit and Rollback functionality
-// as that is exclusively dealt with by WithTransaction in ../db
-// rationale 2: allow mocking
-type TxClient interface {
-	Exec(query string, args ...any) (sql.Result, error)
-	Prepare(query string) (Stmt, error)
-	Stmt(stmt Stmt) Stmt
-}
-
 // txClient is the main implementation of TxClient, delegates to sql.Tx
 // other implementations exist for testing purposes
 type txClient struct {
@@ -46,12 +36,31 @@ func (c txClient) Exec(query string, args ...any) (sql.Result, error) {
 	return res, err
 }
 
-func (c txClient) Stmt(s Stmt) Stmt {
-	return &stmt{
-		queryLogger: c.queryLogger,
-		Stmt:        c.tx.Stmt(s.SQLStmt()),
-		queryString: s.GetQueryString(),
+func (c txClient) ExecStmt(stmt VirtualStmt, args ...any) (sql.Result, error) {
+	defer c.queryLogger.Log(time.Now(), stmt.GetQueryString(), args)
+	res, err := c.tx.Stmt(stmt.SQLStmt()).Exec(args...)
+	if err != nil {
+		err = &QueryError{
+			QueryString: stmt.GetQueryString(),
+			Err:         err,
+		}
 	}
+	return res, err
+}
+
+func (c txClient) Query(query string, args ...any) (Rows, error) {
+	res, err := c.tx.Query(query, args...)
+	if err != nil {
+		return nil, &QueryError{
+			QueryString: query,
+			Err:         err,
+		}
+	}
+	return rows{Rows: res, queryString: query}, nil
+}
+
+func (c txClient) QueryStmt(stmt VirtualStmt, args ...any) (Rows, error) {
+	return c.tx.Stmt(stmt.SQLStmt()).Query(args...)
 }
 
 func (c txClient) Prepare(query string) (Stmt, error) {
@@ -60,7 +69,6 @@ func (c txClient) Prepare(query string) (Stmt, error) {
 		return nil, err
 	}
 	return &stmt{
-		queryLogger: c.queryLogger,
 		Stmt:        prepared,
 		queryString: query,
 	}, nil

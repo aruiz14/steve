@@ -2,7 +2,6 @@ package informer
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"maps"
 	"reflect"
@@ -52,11 +51,11 @@ type Indexer struct {
 	indexers     cache.Indexers
 	indexersLock sync.RWMutex
 
-	deleteIndicesStmt   db.Stmt
-	dropIndicesStmt     db.Stmt
-	listByIndexStmt     db.Stmt
-	listKeysByIndexStmt db.Stmt
-	listIndexValuesStmt db.Stmt
+	deleteIndicesStmt   db.VirtualStmt
+	dropIndicesStmt     db.VirtualStmt
+	listByIndexStmt     db.VirtualStmt
+	listKeysByIndexStmt db.VirtualStmt
+	listIndexValuesStmt db.VirtualStmt
 }
 
 var _ cache.Indexer = (*Indexer)(nil)
@@ -117,7 +116,7 @@ func NewIndexer(ctx context.Context, indexers cache.Indexers, s Store) (*Indexer
 // AfterUpsert updates indices of an object
 func (i *Indexer) AfterUpsert(key string, obj any, tx db.TxClient) error {
 	// delete all
-	if _, err := tx.Stmt(i.deleteIndicesStmt).Exec(key); err != nil {
+	if _, err := tx.ExecStmt(i.deleteIndicesStmt, key); err != nil {
 		return err
 	}
 
@@ -146,17 +145,14 @@ func (i *Indexer) AfterUpsert(key string, obj any, tx db.TxClient) error {
 	multiInsertQuery := fmt.Sprintf(addIndexFmt,
 		db.Sanitize(i.Store.GetName()),
 		strings.Join(slices.Repeat([]string{addIndexValuesPlaceholderFmt}, rowsToInsert), ", "))
-	if _, err := tx.Stmt(i.Prepare(multiInsertQuery)).Exec(valuesToInsert...); err != nil {
-		return err
-	}
-
-	return nil
+	_, err := tx.Exec(multiInsertQuery, valuesToInsert...)
+	return err
 }
 
 /* Satisfy cache.Indexer */
 
 // Index returns a list of items that match the given object on the index function
-func (i *Indexer) Index(indexName string, obj any) (result []any, err error) {
+func (i *Indexer) Index(indexName string, obj any) ([]any, error) {
 	i.indexersLock.RLock()
 	defer i.indexersLock.RUnlock()
 	indexFunc := i.indexers[indexName]
@@ -165,12 +161,8 @@ func (i *Indexer) Index(indexName string, obj any) (result []any, err error) {
 	}
 
 	values, err := indexFunc(obj)
-	if err != nil {
+	if err != nil || len(values) == 0 {
 		return nil, err
-	}
-
-	if len(values) == 0 {
-		return nil, nil
 	}
 
 	// typical case
@@ -181,39 +173,48 @@ func (i *Indexer) Index(indexName string, obj any) (result []any, err error) {
 	// atypical case - more than one value to lookup
 	// HACK: sql.Statement.Query does not allow to pass slices in as of go 1.19 - create an ad-hoc statement
 	query := fmt.Sprintf(selectQueryFmt, db.Sanitize(i.GetName()), strings.Repeat(", ?", len(values)-1))
-	stmt := i.Prepare(query)
 
-	defer func() {
-		if cerr := stmt.Close(); cerr != nil {
-			err = errors.Join(err, cerr)
+	var result []any
+	if err := i.ReadOnlyTransaction(i.ctx, func(tx db.TxClient) error {
+		// HACK: Query will accept []any but not []string
+		params := []any{indexName}
+		for _, value := range values {
+			params = append(params, value)
 		}
-	}()
-	// HACK: Query will accept []any but not []string
-	params := []any{indexName}
-	for _, value := range values {
-		params = append(params, value)
-	}
 
-	rows, err := stmt.QueryContext(i.ctx, params...)
-	if err != nil {
+		rows, err := tx.Query(query, params...)
+		if err != nil {
+			return err
+		}
+
+		result, err = i.ReadObjects(rows, i.GetType())
+		return err
+	}); err != nil {
 		return nil, err
 	}
-	return i.ReadObjects(rows, i.GetType())
+	return result, nil
 }
 
 func (i *Indexer) dropIndices(tx db.TxClient) error {
-	_, err := tx.Stmt(i.dropIndicesStmt).Exec()
+	_, err := tx.ExecStmt(i.dropIndicesStmt)
 	return err
 }
 
 // ByIndex returns the stored objects whose set of indexed values
 // for the named index includes the given indexed value
 func (i *Indexer) ByIndex(indexName, indexedValue string) ([]any, error) {
-	rows, err := i.listByIndexStmt.QueryContext(i.ctx, indexName, indexedValue)
-	if err != nil {
+	var result []any
+	if err := i.ReadOnlyTransaction(i.ctx, func(tx db.TxClient) error {
+		rows, err := tx.QueryStmt(i.listByIndexStmt, indexName, indexedValue)
+		if err != nil {
+			return err
+		}
+		result, err = i.ReadObjects(rows, i.GetType())
+		return err
+	}); err != nil {
 		return nil, err
 	}
-	return i.ReadObjects(rows, i.GetType())
+	return result, nil
 }
 
 // IndexKeys returns a list of the Store keys of the objects whose indexed values in the given index include the given indexed value
@@ -224,12 +225,18 @@ func (i *Indexer) IndexKeys(indexName, indexedValue string) ([]string, error) {
 	if indexFunc == nil {
 		return nil, fmt.Errorf("Index with name %s does not exist", indexName)
 	}
-
-	rows, err := i.listKeysByIndexStmt.QueryContext(i.ctx, indexName, indexedValue)
-	if err != nil {
+	var result []string
+	if err := i.ReadOnlyTransaction(i.ctx, func(tx db.TxClient) error {
+		rows, err := tx.QueryStmt(i.listKeysByIndexStmt, indexName, indexedValue)
+		if err != nil {
+			return err
+		}
+		result, err = i.ReadStrings(rows)
+		return err
+	}); err != nil {
 		return nil, err
 	}
-	return i.ReadStrings(rows)
+	return result, nil
 }
 
 // ListIndexFuncValues wraps safeListIndexFuncValues and panics in case of I/O errors
@@ -243,11 +250,18 @@ func (i *Indexer) ListIndexFuncValues(name string) []string {
 
 // safeListIndexFuncValues returns all the indexed values of the given index
 func (i *Indexer) safeListIndexFuncValues(indexName string) ([]string, error) {
-	rows, err := i.listIndexValuesStmt.QueryContext(i.ctx, indexName)
-	if err != nil {
+	var result []string
+	if err := i.ReadOnlyTransaction(i.ctx, func(tx db.TxClient) error {
+		rows, err := tx.QueryStmt(i.listByIndexStmt, indexName)
+		if err != nil {
+			return err
+		}
+		result, err = i.ReadStrings(rows)
+		return err
+	}); err != nil {
 		return nil, err
 	}
-	return i.ReadStrings(rows)
+	return result, nil
 }
 
 // GetIndexers returns the indexers

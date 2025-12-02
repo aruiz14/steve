@@ -45,12 +45,12 @@ const (
 // Client defines a database client that provides encrypting, decrypting, and database resetting
 type Client interface {
 	Close() error
-	Prepare(stmt string) Stmt
+	Prepare(stmt string) VirtualStmt
 	ReadObjects(rows Rows, typ reflect.Type) ([]any, error)
 	ReadStrings(rows Rows) ([]string, error)
 	ReadStrings2(rows Rows) ([][]string, error)
 	ReadInt(rows Rows) (int, error)
-	Upsert(tx TxClient, stmt Stmt, key string, obj SerializedObject) error
+	Upsert(tx TxClient, stmt VirtualStmt, key string, obj SerializedObject) error
 	Serialize(obj any, encrypt bool) (SerializedObject, error)
 	Deserialize(SerializedObject, any) error
 	WriteTransaction(ctx context.Context, f WithTransactionFunction) error
@@ -196,7 +196,7 @@ func (c *client) Close() error {
 }
 
 // Prepare prepares the given string into a sql statement on the client's connection.
-func (c *client) Prepare(queryString string) Stmt {
+func (c *client) Prepare(queryString string) VirtualStmt {
 	prepared, err := c.conn.Prepare(queryString)
 	if err != nil {
 		panic(fmt.Errorf("Error preparing statement: %s\n%w", queryString, err))
@@ -367,8 +367,8 @@ func (c *client) Deserialize(serialized SerializedObject, dest any) error {
 
 // Upsert executes an upsert statement
 // note the statement should have 4 parameters: key, objBytes, dataNonce, kid
-func (c *client) Upsert(tx TxClient, stmt Stmt, key string, serialized SerializedObject) error {
-	_, err := tx.Stmt(stmt).Exec(key, serialized.Bytes, serialized.Nonce, serialized.KeyID)
+func (c *client) Upsert(tx TxClient, vstmt VirtualStmt, key string, serialized SerializedObject) error {
+	_, err := tx.ExecStmt(vstmt, key, serialized.Bytes, serialized.Nonce, serialized.KeyID)
 	return err
 }
 

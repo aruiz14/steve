@@ -51,13 +51,7 @@ func TestNewIndexer(t *testing.T) {
 		store.EXPECT().GetName().AnyTimes().Return(storeName)
 		client.EXPECT().Exec(fmt.Sprintf(createTableFmt, storeName, storeName)).Return(nil, nil)
 		client.EXPECT().Exec(fmt.Sprintf(createIndexFmt, storeName, storeName)).Return(nil, nil)
-		store.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(nil).Do(
-			func(ctx context.Context, f db.WithTransactionFunction) {
-				err := f(client)
-				if err != nil {
-					t.Fail()
-				}
-			})
+		store.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(nil).Do(runTransactionAssertNoError(t, client))
 		store.EXPECT().RegisterAfterAdd(gomock.Any())
 		store.EXPECT().RegisterAfterUpdate(gomock.Any())
 		store.EXPECT().RegisterBeforeDropAll(gomock.Any())
@@ -100,13 +94,7 @@ func TestNewIndexer(t *testing.T) {
 		store.EXPECT().GetName().AnyTimes().Return(storeName)
 		client.EXPECT().Exec(fmt.Sprintf(createTableFmt, storeName, storeName)).Return(nil, fmt.Errorf("error"))
 
-		store.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(fmt.Errorf("error")).Do(
-			func(ctx context.Context, f db.WithTransactionFunction) {
-				err := f(client)
-				if err == nil {
-					t.Fail()
-				}
-			})
+		store.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(fmt.Errorf("error")).Do(runTransactionAndAssertError(t, client))
 		_, err := NewIndexer(context.Background(), indexers, store)
 		assert.NotNil(t, err)
 	}})
@@ -126,13 +114,7 @@ func TestNewIndexer(t *testing.T) {
 		client.EXPECT().Exec(fmt.Sprintf(createTableFmt, storeName, storeName)).Return(nil, nil)
 		client.EXPECT().Exec(fmt.Sprintf(createIndexFmt, storeName, storeName)).Return(nil, fmt.Errorf("error"))
 
-		store.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(fmt.Errorf("error")).Do(
-			func(ctx context.Context, f db.WithTransactionFunction) {
-				err := f(client)
-				if err == nil {
-					t.Fail()
-				}
-			})
+		store.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(fmt.Errorf("error")).Do(runTransactionAndAssertError(t, client))
 
 		_, err := NewIndexer(context.Background(), indexers, store)
 		assert.NotNil(t, err)
@@ -152,13 +134,7 @@ func TestNewIndexer(t *testing.T) {
 		store.EXPECT().GetName().AnyTimes().Return(storeName)
 		client.EXPECT().Exec(fmt.Sprintf(createTableFmt, storeName, storeName)).Return(nil, nil)
 		client.EXPECT().Exec(fmt.Sprintf(createIndexFmt, storeName, storeName)).Return(nil, nil)
-		store.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(fmt.Errorf("error")).Do(
-			func(ctx context.Context, f db.WithTransactionFunction) {
-				err := f(client)
-				if err != nil {
-					t.Fail()
-				}
-			})
+		store.EXPECT().WriteTransaction(gomock.Any(), gomock.Any()).Return(fmt.Errorf("error")).Do(runTransactionAssertNoError(t, client))
 		_, err := NewIndexer(context.Background(), indexers, store)
 		assert.NotNil(t, err)
 	}})
@@ -181,12 +157,11 @@ func TestAfterUpsert(t *testing.T) {
 		store := NewMockStore(ctrl)
 		client := NewMockTxClient(ctrl)
 		objKey := "key"
-		deleteIndicesStmt := NewMockStmt(ctrl)
-		addIndexStmt := NewMockStmt(ctrl)
 		dbName := "name"
 		indexer := &Indexer{
-			ctx:   context.Background(),
-			Store: store,
+			ctx:               context.Background(),
+			Store:             store,
+			deleteIndicesStmt: NewMockStmt(ctrl),
 			indexers: map[string]cache.IndexFunc{
 				"a": func(obj interface{}) ([]string, error) {
 					return []string{objKey}, nil
@@ -197,12 +172,10 @@ func TestAfterUpsert(t *testing.T) {
 			},
 		}
 		key := "somekey"
-		client.EXPECT().Stmt(indexer.deleteIndicesStmt).Return(deleteIndicesStmt)
-		deleteIndicesStmt.EXPECT().Exec(key).Return(nil, nil)
 		store.EXPECT().GetName().Return(dbName)
-		store.EXPECT().Prepare(fmt.Sprintf(addIndexFmt, dbName, "(?, ?, ?), (?, ?, ?)")).Return(addIndexStmt)
-		client.EXPECT().Stmt(addIndexStmt).Return(addIndexStmt)
-		addIndexStmt.EXPECT().Exec("a", objKey, key, "b", objKey, key).Return(nil, nil)
+		client.EXPECT().ExecStmt(indexer.deleteIndicesStmt, key).Return(nil, nil)
+		query := fmt.Sprintf(addIndexFmt, dbName, "(?, ?, ?), (?, ?, ?)")
+		client.EXPECT().Exec(query, "a", objKey, key, "b", objKey, key).Return(nil, nil)
 		testObject := testStoreObject{Id: "something", Val: "a"}
 		err := indexer.AfterUpsert(key, testObject, client)
 		assert.Nil(t, err)
@@ -212,10 +185,10 @@ func TestAfterUpsert(t *testing.T) {
 		store := NewMockStore(ctrl)
 		client := NewMockTxClient(ctrl)
 		objKey := "key"
-		deleteIndicesStmt := NewMockStmt(ctrl)
 		indexer := &Indexer{
-			ctx:   context.Background(),
-			Store: store,
+			ctx:               context.Background(),
+			Store:             store,
+			deleteIndicesStmt: NewMockStmt(ctrl),
 
 			indexers: map[string]cache.IndexFunc{
 				"a": func(obj interface{}) ([]string, error) {
@@ -224,8 +197,7 @@ func TestAfterUpsert(t *testing.T) {
 			},
 		}
 		key := "somekey"
-		client.EXPECT().Stmt(indexer.deleteIndicesStmt).Return(deleteIndicesStmt)
-		deleteIndicesStmt.EXPECT().Exec(key).Return(nil, fmt.Errorf("error"))
+		client.EXPECT().ExecStmt(indexer.deleteIndicesStmt, key).Return(nil, fmt.Errorf("error"))
 		testObject := testStoreObject{Id: "something", Val: "a"}
 		err := indexer.AfterUpsert(key, testObject, client)
 		assert.NotNil(t, err)
@@ -234,13 +206,12 @@ func TestAfterUpsert(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
 		client := NewMockTxClient(ctrl)
-		deleteIndicesStmt := NewMockStmt(ctrl)
-		addIndexStmt := NewMockStmt(ctrl)
 		objKey := "key"
 		dbName := "name"
 		indexer := &Indexer{
-			ctx:   context.Background(),
-			Store: store,
+			ctx:               context.Background(),
+			Store:             store,
+			deleteIndicesStmt: NewMockStmt(ctrl),
 			indexers: map[string]cache.IndexFunc{
 				"a": func(obj interface{}) ([]string, error) {
 					return []string{objKey}, nil
@@ -248,12 +219,10 @@ func TestAfterUpsert(t *testing.T) {
 			},
 		}
 		key := "somekey"
-		client.EXPECT().Stmt(indexer.deleteIndicesStmt).Return(deleteIndicesStmt)
-		deleteIndicesStmt.EXPECT().Exec(key).Return(nil, nil)
+		client.EXPECT().ExecStmt(indexer.deleteIndicesStmt, key).Return(nil, nil)
 		store.EXPECT().GetName().Return(dbName)
-		store.EXPECT().Prepare(fmt.Sprintf(addIndexFmt, dbName, "(?, ?, ?)")).Return(addIndexStmt)
-		client.EXPECT().Stmt(addIndexStmt).Return(addIndexStmt)
-		addIndexStmt.EXPECT().Exec("a", objKey, key).Return(nil, fmt.Errorf("error"))
+		query := fmt.Sprintf(addIndexFmt, dbName, "(?, ?, ?)")
+		client.EXPECT().Exec(query, "a", objKey, key).Return(nil, fmt.Errorf("error"))
 		testObject := testStoreObject{Id: "something", Val: "a"}
 		err := indexer.AfterUpsert(key, testObject, client)
 		assert.NotNil(t, err)
@@ -276,14 +245,14 @@ func TestIndex(t *testing.T) {
 		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listByIndexStmt := NewMockStmt(ctrl)
+		client := NewMockTxClient(ctrl)
 		rows := &sql.Rows{}
 		objKey := "key"
 		indexName := "someindexname"
 		indexer := &Indexer{
 			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: listByIndexStmt,
+			listByIndexStmt: NewMockStmt(ctrl),
 			indexers: map[string]cache.IndexFunc{
 				indexName: func(obj interface{}) ([]string, error) {
 					return []string{objKey}, nil
@@ -292,7 +261,8 @@ func TestIndex(t *testing.T) {
 		}
 		testObject := testStoreObject{Id: "something", Val: "a"}
 
-		listByIndexStmt.EXPECT().QueryContext(ctx, indexName, objKey).Return(rows, nil)
+		store.EXPECT().ReadOnlyTransaction(ctx, gomock.Any()).Return(nil).Do(runTransactionAssertNoError(t, client))
+		client.EXPECT().QueryStmt(indexer.listByIndexStmt, indexName, objKey).Return(rows, nil)
 		store.EXPECT().GetType().Return(reflect.TypeOf(testObject))
 		store.EXPECT().ReadObjects(rows, reflect.TypeOf(testObject)).Return([]any{testObject}, nil)
 		objs, err := indexer.Index(indexName, testObject)
@@ -303,14 +273,14 @@ func TestIndex(t *testing.T) {
 		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listByIndexStmt := NewMockStmt(ctrl)
+		client := NewMockTxClient(ctrl)
 		rows := &sql.Rows{}
 		objKey := "key"
 		indexName := "someindexname"
 		indexer := &Indexer{
 			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: listByIndexStmt,
+			listByIndexStmt: NewMockStmt(ctrl),
 			indexers: map[string]cache.IndexFunc{
 				indexName: func(obj interface{}) ([]string, error) {
 					return []string{objKey}, nil
@@ -319,7 +289,8 @@ func TestIndex(t *testing.T) {
 		}
 		testObject := testStoreObject{Id: "something", Val: "a"}
 
-		listByIndexStmt.EXPECT().QueryContext(ctx, indexName, objKey).Return(rows, nil)
+		store.EXPECT().ReadOnlyTransaction(ctx, gomock.Any()).Return(nil).Do(runTransactionAssertNoError(t, client))
+		client.EXPECT().QueryStmt(indexer.listByIndexStmt, indexName, objKey).Return(rows, nil)
 		store.EXPECT().GetType().Return(reflect.TypeOf(testObject))
 		store.EXPECT().ReadObjects(rows, reflect.TypeOf(testObject)).Return([]any{testObject, testObject}, nil)
 		objs, err := indexer.Index(indexName, testObject)
@@ -330,14 +301,14 @@ func TestIndex(t *testing.T) {
 		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listByIndexStmt := NewMockStmt(ctrl)
+		client := NewMockTxClient(ctrl)
 		rows := &sql.Rows{}
 		objKey := "key"
 		indexName := "someindexname"
 		indexer := &Indexer{
 			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: listByIndexStmt,
+			listByIndexStmt: NewMockStmt(ctrl),
 			indexers: map[string]cache.IndexFunc{
 				indexName: func(obj interface{}) ([]string, error) {
 					return []string{objKey}, nil
@@ -346,7 +317,8 @@ func TestIndex(t *testing.T) {
 		}
 		testObject := testStoreObject{Id: "something", Val: "a"}
 
-		listByIndexStmt.EXPECT().QueryContext(ctx, indexName, objKey).Return(rows, nil)
+		store.EXPECT().ReadOnlyTransaction(ctx, gomock.Any()).Return(nil).Do(runTransactionAssertNoError(t, client))
+		client.EXPECT().QueryStmt(indexer.listByIndexStmt, indexName, objKey).Return(rows, nil)
 		store.EXPECT().GetType().Return(reflect.TypeOf(testObject))
 		store.EXPECT().ReadObjects(rows, reflect.TypeOf(testObject)).Return([]any{}, nil)
 		objs, err := indexer.Index(indexName, testObject)
@@ -354,16 +326,13 @@ func TestIndex(t *testing.T) {
 		assert.Equal(t, []any{}, objs)
 	}})
 	tests = append(tests, testCase{description: "Index() where index name is not in indexers, should return error", test: func(t *testing.T) {
-		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listByIndexStmt := NewMockStmt(ctrl)
 		objKey := "key"
 		indexName := "someindexname"
 		indexer := &Indexer{
-			ctx:             ctx,
-			Store:           store,
-			listByIndexStmt: listByIndexStmt,
+			ctx:   t.Context(),
+			Store: store,
 			indexers: map[string]cache.IndexFunc{
 				indexName: func(obj interface{}) ([]string, error) {
 					return []string{objKey}, nil
@@ -379,13 +348,13 @@ func TestIndex(t *testing.T) {
 		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listByIndexStmt := NewMockStmt(ctrl)
+		client := NewMockTxClient(ctrl)
 		objKey := "key"
 		indexName := "someindexname"
 		indexer := &Indexer{
 			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: listByIndexStmt,
+			listByIndexStmt: NewMockStmt(ctrl),
 			indexers: map[string]cache.IndexFunc{
 				indexName: func(obj interface{}) ([]string, error) {
 					return []string{objKey}, nil
@@ -394,7 +363,8 @@ func TestIndex(t *testing.T) {
 		}
 		testObject := testStoreObject{Id: "something", Val: "a"}
 
-		listByIndexStmt.EXPECT().QueryContext(ctx, indexName, objKey).Return(nil, fmt.Errorf("error"))
+		store.EXPECT().ReadOnlyTransaction(ctx, gomock.Any()).DoAndReturn(runTransaction(client))
+		client.EXPECT().QueryStmt(indexer.listByIndexStmt, indexName, objKey).Return(nil, fmt.Errorf("error"))
 		_, err := indexer.Index(indexName, testObject)
 		assert.NotNil(t, err)
 	}})
@@ -402,14 +372,14 @@ func TestIndex(t *testing.T) {
 		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listByIndexStmt := NewMockStmt(ctrl)
 		rows := &sql.Rows{}
+		client := NewMockTxClient(ctrl)
 		objKey := "key"
 		indexName := "someindexname"
 		indexer := &Indexer{
 			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: listByIndexStmt,
+			listByIndexStmt: NewMockStmt(ctrl),
 			indexers: map[string]cache.IndexFunc{
 				indexName: func(obj interface{}) ([]string, error) {
 					return []string{objKey}, nil
@@ -418,7 +388,8 @@ func TestIndex(t *testing.T) {
 		}
 		testObject := testStoreObject{Id: "something", Val: "a"}
 
-		listByIndexStmt.EXPECT().QueryContext(ctx, indexName, objKey).Return(rows, nil)
+		store.EXPECT().ReadOnlyTransaction(ctx, gomock.Any()).DoAndReturn(runTransaction(client))
+		client.EXPECT().QueryStmt(indexer.listByIndexStmt, indexName, objKey).Return(rows, nil)
 		store.EXPECT().GetType().Return(reflect.TypeOf(testObject))
 		store.EXPECT().ReadObjects(rows, reflect.TypeOf(testObject)).Return([]any{testObject}, fmt.Errorf("error"))
 		_, err := indexer.Index(indexName, testObject)
@@ -428,14 +399,13 @@ func TestIndex(t *testing.T) {
 		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listByIndexStmt := NewMockStmt(ctrl)
+		client := NewMockTxClient(ctrl)
 		rows := &sql.Rows{}
 		objKey := "key"
 		indexName := "someindexname"
 		indexer := &Indexer{
-			ctx:             ctx,
-			Store:           store,
-			listByIndexStmt: listByIndexStmt,
+			ctx:   ctx,
+			Store: store,
 			indexers: map[string]cache.IndexFunc{
 				indexName: func(obj interface{}) ([]string, error) {
 					return []string{objKey, objKey + "2"}, nil
@@ -445,13 +415,11 @@ func TestIndex(t *testing.T) {
 		testObject := testStoreObject{Id: "something", Val: "a"}
 
 		store.EXPECT().GetName().Return("name")
-		listByIndexStmt.EXPECT().QueryContext(ctx, indexName, objKey, objKey+"2").Return(rows, nil)
-		selectStmt := NewMockStmt(ctrl)
-		store.EXPECT().Prepare(fmt.Sprintf(selectQueryFmt, "name", ", ?")).Return(selectStmt)
-		selectStmt.EXPECT().QueryContext(ctx, indexName, objKey, objKey+"2").Return(rows, nil)
+		store.EXPECT().ReadOnlyTransaction(ctx, gomock.Any()).DoAndReturn(runTransaction(client))
+		query := fmt.Sprintf(selectQueryFmt, "name", ", ?")
+		client.EXPECT().Query(query, indexName, objKey, objKey+"2").Return(rows, nil)
 		store.EXPECT().GetType().Return(reflect.TypeOf(testObject))
 		store.EXPECT().ReadObjects(rows, reflect.TypeOf(testObject)).Return([]any{testObject}, nil)
-		selectStmt.EXPECT().Close()
 		objs, err := indexer.Index(indexName, testObject)
 		assert.Nil(t, err)
 		assert.Equal(t, []any{testObject}, objs)
@@ -474,18 +442,19 @@ func TestByIndex(t *testing.T) {
 		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listByIndexStmt := NewMockStmt(ctrl)
+		client := NewMockTxClient(ctrl)
 		rows := &sql.Rows{}
 		objKey := "key"
 		indexName := "someindexname"
 		indexer := &Indexer{
 			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: listByIndexStmt,
+			listByIndexStmt: NewMockStmt(ctrl),
 		}
 		testObject := testStoreObject{Id: "something", Val: "a"}
 
-		listByIndexStmt.EXPECT().QueryContext(ctx, indexName, objKey).Return(rows, nil)
+		store.EXPECT().ReadOnlyTransaction(ctx, gomock.Any()).DoAndReturn(runTransaction(client))
+		client.EXPECT().QueryStmt(indexer.listByIndexStmt, indexName, objKey).Return(rows, nil)
 		store.EXPECT().GetType().Return(reflect.TypeOf(testObject))
 		store.EXPECT().ReadObjects(rows, reflect.TypeOf(testObject)).Return([]any{testObject}, nil)
 		objs, err := indexer.ByIndex(indexName, objKey)
@@ -496,18 +465,19 @@ func TestByIndex(t *testing.T) {
 		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listByIndexStmt := NewMockStmt(ctrl)
+		client := NewMockTxClient(ctrl)
 		rows := &sql.Rows{}
 		objKey := "key"
 		indexName := "someindexname"
 		indexer := &Indexer{
 			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: listByIndexStmt,
+			listByIndexStmt: NewMockStmt(ctrl),
 		}
 		testObject := testStoreObject{Id: "something", Val: "a"}
 
-		listByIndexStmt.EXPECT().QueryContext(ctx, indexName, objKey).Return(rows, nil)
+		store.EXPECT().ReadOnlyTransaction(ctx, gomock.Any()).DoAndReturn(runTransaction(client))
+		client.EXPECT().QueryStmt(indexer.listByIndexStmt, indexName, objKey).Return(rows, nil)
 		store.EXPECT().GetType().Return(reflect.TypeOf(testObject))
 		store.EXPECT().ReadObjects(rows, reflect.TypeOf(testObject)).Return([]any{testObject, testObject}, nil)
 		objs, err := indexer.ByIndex(indexName, objKey)
@@ -518,18 +488,19 @@ func TestByIndex(t *testing.T) {
 		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listByIndexStmt := NewMockStmt(ctrl)
+		client := NewMockTxClient(ctrl)
 		rows := &sql.Rows{}
 		objKey := "key"
 		indexName := "someindexname"
 		indexer := &Indexer{
 			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: listByIndexStmt,
+			listByIndexStmt: NewMockStmt(ctrl),
 		}
 		testObject := testStoreObject{Id: "something", Val: "a"}
 
-		listByIndexStmt.EXPECT().QueryContext(ctx, indexName, objKey).Return(rows, nil)
+		store.EXPECT().ReadOnlyTransaction(ctx, gomock.Any()).DoAndReturn(runTransaction(client))
+		client.EXPECT().QueryStmt(indexer.listByIndexStmt, indexName, objKey).Return(rows, nil)
 		store.EXPECT().GetType().Return(reflect.TypeOf(testObject))
 		store.EXPECT().ReadObjects(rows, reflect.TypeOf(testObject)).Return([]any{}, nil)
 		objs, err := indexer.ByIndex(indexName, objKey)
@@ -540,16 +511,17 @@ func TestByIndex(t *testing.T) {
 		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listByIndexStmt := NewMockStmt(ctrl)
+		client := NewMockTxClient(ctrl)
 		objKey := "key"
 		indexName := "someindexname"
 		indexer := &Indexer{
 			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: listByIndexStmt,
+			listByIndexStmt: NewMockStmt(ctrl),
 		}
 
-		listByIndexStmt.EXPECT().QueryContext(ctx, indexName, objKey).Return(nil, fmt.Errorf("error"))
+		store.EXPECT().ReadOnlyTransaction(ctx, gomock.Any()).DoAndReturn(runTransaction(client))
+		client.EXPECT().QueryStmt(indexer.listByIndexStmt, indexName, objKey).Return(nil, fmt.Errorf("error"))
 		_, err := indexer.ByIndex(indexName, objKey)
 		assert.NotNil(t, err)
 	}})
@@ -557,18 +529,19 @@ func TestByIndex(t *testing.T) {
 		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listByIndexStmt := NewMockStmt(ctrl)
+		client := NewMockTxClient(ctrl)
 		rows := &sql.Rows{}
 		objKey := "key"
 		indexName := "someindexname"
 		indexer := &Indexer{
 			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: listByIndexStmt,
+			listByIndexStmt: NewMockStmt(ctrl),
 		}
 		testObject := testStoreObject{Id: "something", Val: "a"}
 
-		listByIndexStmt.EXPECT().QueryContext(ctx, indexName, objKey).Return(rows, nil)
+		store.EXPECT().ReadOnlyTransaction(ctx, gomock.Any()).DoAndReturn(runTransaction(client))
+		client.EXPECT().QueryStmt(indexer.listByIndexStmt, indexName, objKey).Return(rows, nil)
 		store.EXPECT().GetType().Return(reflect.TypeOf(testObject))
 		store.EXPECT().ReadObjects(rows, reflect.TypeOf(testObject)).Return([]any{testObject}, fmt.Errorf("error"))
 		_, err := indexer.ByIndex(indexName, objKey)
@@ -592,15 +565,17 @@ func TestListIndexFuncValues(t *testing.T) {
 		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listByIndexStmt := NewMockStmt(ctrl)
+		client := NewMockTxClient(ctrl)
 		rows := &sql.Rows{}
 		indexName := "someindexname"
 		indexer := &Indexer{
 			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: listByIndexStmt,
+			listByIndexStmt: NewMockStmt(ctrl),
 		}
-		listByIndexStmt.EXPECT().QueryContext(ctx, indexName).Return(rows, nil)
+
+		store.EXPECT().ReadOnlyTransaction(ctx, gomock.Any()).DoAndReturn(runTransaction(client))
+		client.EXPECT().QueryStmt(indexer.listByIndexStmt, indexName).Return(rows, nil)
 		store.EXPECT().ReadStrings(rows).Return([]string{"somestrings"}, nil)
 		vals := indexer.ListIndexFuncValues(indexName)
 		assert.Equal(t, []string{"somestrings"}, vals)
@@ -609,29 +584,31 @@ func TestListIndexFuncValues(t *testing.T) {
 		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listByIndexStmt := NewMockStmt(ctrl)
+		client := NewMockTxClient(ctrl)
 		indexName := "someindexname"
 		indexer := &Indexer{
 			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: listByIndexStmt,
+			listByIndexStmt: NewMockStmt(ctrl),
 		}
-		listByIndexStmt.EXPECT().QueryContext(ctx, indexName).Return(nil, fmt.Errorf("error"))
+		store.EXPECT().ReadOnlyTransaction(ctx, gomock.Any()).DoAndReturn(runTransaction(client))
+		client.EXPECT().QueryStmt(indexer.listByIndexStmt, indexName).Return(nil, fmt.Errorf("error"))
 		assert.Panics(t, func() { indexer.ListIndexFuncValues(indexName) })
 	}})
 	tests = append(tests, testCase{description: "ListIndexFuncvalues() with ReadStrings() error returned from store, should panic", test: func(t *testing.T) {
 		ctx := t.Context()
 		ctrl := gomock.NewController(t)
 		store := NewMockStore(ctrl)
-		listByIndexStmt := NewMockStmt(ctrl)
+		client := NewMockTxClient(ctrl)
 		rows := &sql.Rows{}
 		indexName := "someindexname"
 		indexer := &Indexer{
 			ctx:             ctx,
 			Store:           store,
-			listByIndexStmt: listByIndexStmt,
+			listByIndexStmt: NewMockStmt(ctrl),
 		}
-		listByIndexStmt.EXPECT().QueryContext(ctx, indexName).Return(rows, nil)
+		store.EXPECT().ReadOnlyTransaction(ctx, gomock.Any()).DoAndReturn(runTransaction(client))
+		client.EXPECT().QueryStmt(indexer.listByIndexStmt, indexName).Return(rows, nil)
 		store.EXPECT().ReadStrings(rows).Return([]string{"somestrings"}, fmt.Errorf("error"))
 		assert.Panics(t, func() { indexer.ListIndexFuncValues(indexName) })
 	}})
@@ -692,5 +669,29 @@ func TestAddIndexers(t *testing.T) {
 	t.Parallel()
 	for _, test := range tests {
 		t.Run(test.description, func(t *testing.T) { test.test(t) })
+	}
+}
+
+func runTransaction(client db.TxClient) func(context.Context, db.WithTransactionFunction) error {
+	return func(_ context.Context, f db.WithTransactionFunction) error {
+		return f(client)
+	}
+}
+
+func runTransactionAssertNoError(t *testing.T, client db.TxClient) func(context.Context, db.WithTransactionFunction) {
+	return func(_ context.Context, f db.WithTransactionFunction) {
+		err := f(client)
+		if err != nil {
+			t.Fail()
+		}
+	}
+}
+
+func runTransactionAndAssertError(t *testing.T, client db.TxClient) func(context.Context, db.WithTransactionFunction) {
+	return func(_ context.Context, f db.WithTransactionFunction) {
+		err := f(client)
+		if err == nil {
+			t.Fail()
+		}
 	}
 }

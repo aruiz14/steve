@@ -385,8 +385,7 @@ func TestUpsert(t *testing.T) {
 		client := SetupClient(c, e, d)
 		txC := NewMockTxClient(gomock.NewController(t))
 		stmt := NewMockStmt(gomock.NewController(t))
-		txC.EXPECT().Stmt(stmt).Return(stmt)
-		stmt.EXPECT().Exec("somekey", testObjectBytes, testNonce, keyID).Return(nil, nil)
+		txC.EXPECT().ExecStmt(stmt, "somekey", testObjectBytes, testNonce, keyID).Return(nil, nil)
 		err := client.Upsert(txC, stmt, "somekey", serialized)
 		assert.NoError(t, err)
 	},
@@ -399,8 +398,7 @@ func TestUpsert(t *testing.T) {
 		client := SetupClient(c, e, d)
 		txC := NewMockTxClient(gomock.NewController(t))
 		stmt := NewMockStmt(gomock.NewController(t))
-		txC.EXPECT().Stmt(stmt).Return(stmt)
-		stmt.EXPECT().Exec("somekey", testObjectBytes, testNonce, keyID).Return(nil, fmt.Errorf("error"))
+		txC.EXPECT().ExecStmt(stmt, "somekey", testObjectBytes, testNonce, keyID).Return(nil, fmt.Errorf("error"))
 
 		err := client.Upsert(txC, stmt, "somekey", serialized)
 		assert.Error(t, err)
