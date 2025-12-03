@@ -18,7 +18,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 
@@ -64,7 +63,7 @@ type client struct {
 	encoding  encoding
 	dbDir     string
 
-	writePool, readPool *sqlitex.Pool
+	writePool, readPool dbPool
 
 	queryLogger logging.QueryLogger
 }
@@ -360,6 +359,7 @@ func (c *client) openDatabase(dbDir string) error {
 		}
 		return registerCustomFunctions(conn)
 	}
+	// Use a single connection pool for writing
 	writePool, err := sqlitex.NewPool(dbPath, sqlitex.PoolOptions{
 		// open SQLite file in read-write mode, creating it if it does not exist
 		Flags:       sqlite.OpenReadWrite | sqlite.OpenWAL,
@@ -369,16 +369,15 @@ func (c *client) openDatabase(dbDir string) error {
 	if err != nil {
 		return err
 	}
-	readPool, err := sqlitex.NewPool(dbPath, sqlitex.PoolOptions{
+	// Use a dynamically growing connections pool for reads (similar to default behaviour of sql.DB)
+	readPool, err := newDynamicPool(dbPath, dynamicPoolOptions{
 		Flags:       sqlite.OpenReadOnly,
-		PoolSize:    runtime.GOMAXPROCS(0) * 2,
 		PrepareConn: prepareConnection,
 	})
 	if err != nil {
 		writePool.Close()
 		return err
 	}
-	// TODO(alejandro): look into different pool implementations (e.g. dynamic)
 	c.writePool = writePool
 	c.readPool = readPool
 
